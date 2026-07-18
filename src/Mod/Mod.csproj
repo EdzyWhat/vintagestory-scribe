@@ -34,4 +34,12 @@
     </Reference>
   </ItemGroup>
 
+  <!-- A Vintage Story mod is more than its DLL: modinfo.json and assets/ must sit alongside
+       it (both when the game loads an unpacked mod folder and when Atlas stages this
+       project's build output as a mod). Copy them into the build output on every build. -->
+  <ItemGroup>
+    <None Include="modinfo.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

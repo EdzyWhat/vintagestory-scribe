@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Atlas integration tests: boot a real headless server against the local Vintage Story
+       install (VINTAGE_STORY env var) and exercise the Mod's server-side behavior
+       (persistence, the network edit round-trip, the single-editor lock). LOCAL ONLY:
+       cloud CI has no game install, so this project is not part of ci.yml. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Pixnop.Atlas.XUnit" Version="0.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Game types appear directly in IWorldSession signatures (BlockPos and friends),
+         so the test project must compile against them too. -->
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)/VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- AtlasMod=true triggers Atlas's own buildTransitive target, which resolves this
+         reference's build output and writes it to atlas-mods.generated.txt next to the
+         test assembly, no hand-written relative path needed. -->
+    <ProjectReference Include="..\..\src\Mod\Mod.csproj">
+      <AtlasMod>true</AtlasMod>
+    </ProjectReference>
+  </ItemGroup>
+
+  <!-- World fixtures (.vcdbs), regenerated with `atlas fixture` when a builder scenario
+       changes (see README's "Running the Atlas suite" section). Paths in [AtlasWorld] and
+       the fixture command's out option are resolved relative to THIS output directory,
+       not the source tree, so the fixture must be copied here on every build. -->
+  <ItemGroup>
+    <None Include="fixtures/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
