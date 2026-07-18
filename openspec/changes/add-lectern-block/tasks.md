@@ -8,16 +8,16 @@
 
 ## 2. Core: task-note document model (test-first)
 
-- [ ] 2.1 Write failing xUnit tests for the document structure (new doc is empty; task order preserved)
-- [ ] 2.2 Write failing tests for add task (adds to end; trims; rejects blank)
-- [ ] 2.3 Write failing tests for rename task (changes text, keeps done flag; rejects blank; invalid position fails safely)
-- [ ] 2.4 Write failing tests for toggle completion (both directions; invalid position fails safely)
-- [ ] 2.5 Write failing tests for delete task (removes by position, preserves order; invalid position fails safely)
-- [ ] 2.6 Write failing tests for editing the note (set and clear)
-- [ ] 2.7 Write failing tests for the serialization round-trip (content preserved; malformed/empty bytes fail safely without throwing)
-- [ ] 2.8 Implement `ScribeTask` (Text, Done) and `ScribeDocument` (tasks + note) with the mutation methods returning success/failure
-- [ ] 2.9 Implement the byte-array codec (serialize/try-deserialize) used by both persistence and networking
-- [ ] 2.10 Run `dotnet test` — all Core tests pass
+- [x] 2.1 Write failing xUnit tests for the document structure (new doc is empty; task order preserved)
+- [x] 2.2 Write failing tests for add task (adds to end; trims; rejects blank)
+- [x] 2.3 Write failing tests for rename task (changes text, keeps done flag; rejects blank; invalid position fails safely)
+- [x] 2.4 Write failing tests for toggle completion (both directions; invalid position fails safely)
+- [x] 2.5 Write failing tests for delete task (removes by position, preserves order; invalid position fails safely)
+- [x] 2.6 Write failing tests for editing the note (set and clear)
+- [x] 2.7 Write failing tests for the serialization round-trip (content preserved; malformed/empty bytes fail safely without throwing)
+- [x] 2.8 Implement `ScribeTask` (Text, Done) and `ScribeDocument` (tasks + note) with the mutation methods returning success/failure
+- [x] 2.9 Implement the byte-array codec (serialize/try-deserialize) used by both persistence and networking
+- [x] 2.10 Run `dotnet test` — all Core tests pass
 
 ## 3. Mod: assets & mod metadata
 
