@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "salesforce-claude-support@aiforce-support-marketplace": false,
+    "salesforce-trust-foundations@salesforce-native-ai-stack": false,
+    "swift-lsp@claude-plugins-official": false,
+    "google-workspace@salesforce-native-ai-stack": false
+  }
+}
