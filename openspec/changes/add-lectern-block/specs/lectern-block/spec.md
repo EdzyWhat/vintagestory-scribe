@@ -37,7 +37,7 @@ completion, delete blocks, and reorder blocks from the lectern's GUI.
 
 #### Scenario: Reorder blocks in the GUI
 
-- **WHEN** the player enters reorder mode and moves a block up or down
+- **WHEN** the player enters reorder mode and drags a block to a new position
 - **THEN** the lectern's document reflects the new block order after saving
 
 ### Requirement: Collapsible, gating-ready tool panel

@@ -88,12 +88,22 @@ directly they connect archaeology/history to actual gameplay (not just flavor):
   shared-doc infrastructure exists.
 - **Wax-seal "soft security"** for private documents/notes — tamper is *possible* but
   leaves evidence, rather than a hard lock. Fits VS's grounded-realism ethos better than an
-  unbreakable lock. Consider native support or interop with the existing **Envelopes** mod
-  (github.com/SiiMeR/vs-envelopes).
-- Lower-priority / needs more investigation before committing: handwriting neatening with
-  practice (skill curve), item aging/wear visuals, Survival Handbook cross-referencing
-  (bookmark a Handbook entry as a task), milestone/tech-unlock auto-suggested tasks (VS has
-  no clean achievement-event hook — needs a research spike first).
+  unbreakable lock. **Decided: pursue only if it's a cheap interop** with the existing
+  **Envelopes** mod (github.com/SiiMeR/vs-envelopes); otherwise skip or build native later.
+  Not urgent.
+- **Milestone-suggested tasks — decided, pursue.** When the player crosses a tech
+  milestone (e.g. first bronze smelt), surface **one single, easily-dismissed suggested
+  task** ("Build a proper forge") — never a queue, never a nag. Two candidate paths: (a) an
+  **optional soft dependency on the Achievements mod** (mods.vintagestory.at/achievements)
+  if it exposes a usable unlock signal (research in flight); (b) if not, Scribe **detects
+  vanilla tech milestones itself** from inventory/knowledge state, no dependency needed.
+  Later/park tier, not v1.
+- **Handbook bookmarking — decided, pursue long-term.** Bookmark a Survival Handbook entry
+  into the notebook as a task ("craft this once I have iron"). Acknowledged as the deepest
+  API integration on this list (needs Handbook page-ID access) — its own dedicated OpenSpec
+  change well after the core tiers exist, not a near-term item.
+- Lower-priority / needs more investigation: handwriting neatening with practice (skill
+  curve), item aging/wear visuals.
 
 ### UX lessons from PM/notetaking apps (Notion, Todoist, Bullet Journal, GTD, etc.)
 
@@ -108,8 +118,11 @@ Concrete, cheap changes this suggests:
 - **Sort completed tasks toward the bottom** (or a collapsed "Done (N)" group) using the
   `MoveBlock` primitive we already have — mirrors Kanban's "card leaves the column"
   satisfaction without adding columns/lanes.
-- **Reorder as select + step up/down**, not simulated drag — matches `MoveBlock(from, to)`
-  directly and is more robust than drag gestures in a small GUI panel.
+- **Reorder via mouse drag**, not select + step up/down. The generic UX advice favors
+  step buttons to avoid fiddly drag gestures, but VS itself is heavily mouse-driven
+  (crafting grid, blacksmithing, clayforming), so drag-to-reorder is the more consistent
+  choice for this game specifically. `MoveBlock(from, to)` in Core doesn't care which
+  interaction calls it, so this is purely a GUI-layer decision.
 - **A "carry forward" migration action** for the clay tablet's 3-line cap: copy undone
   tasks into a fresh tablet, clearing the old one — Bullet-Journal-style migration, and a
   natural fit since the tablet's scarcity already forces the "is this still worth keeping?"
