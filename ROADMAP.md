@@ -57,4 +57,68 @@ age (the saw); anything past that is cosmetic.
   names, so the mod is translatable. Worth setting up the `lang` key structure early (v1) even
   if only English is authored at first, so later strings don't need retrofitting.
 
+### Immersion ideas (curated — see project plan Reference for the full brainstorm)
+
+Grounded, distinctive, and reasonably cheap ideas worth tracking. Ranked roughly by how
+directly they connect archaeology/history to actual gameplay (not just flavor):
+
+- **Firing a tablet is a real crafting decision, not just lore.** A completed soft tablet
+  can be fired in a kiln to become a **permanent, read-only, indestructible archive** —
+  versus staying soft/editable but forever water-fragile. Mirrors the real reason ancient
+  tablets survive (accidental/deliberate firing, often in building fires). The single most
+  historically-grounded mechanic on this list — a genuine tier trade-off, not a strict
+  upgrade.
+- **Fire vs. water asymmetric fragility across tiers.** Clay is fireproof but water-fragile
+  (already planned); paper/leather should be the inverse — fire-fragile, more water-resistant.
+  Keeps later tiers from being strictly "better," which is more interesting design.
+- **Death leaves a last entry.** On player death, auto-append a timestamped/located final
+  entry to the player's current document. Combined with normal VS item-drop-on-death, this
+  turns a dropped notebook into a real in-fiction artifact someone else might find at your
+  gravesite. No other VS mod appears to do this — a distinctive hook.
+- **Calendar-stamped entries + passive chronicle-building.** Auto-timestamp entries with
+  VS's real in-game calendar (seasons/days); auto-log recurring world events (e.g. "survived
+  a temporal storm on Day X"); auto-archive completed task lists into a read-only section
+  instead of discarding them. All three are cheap and combine into a "journal of your
+  journey" that writes itself over a long playthrough.
+- **Signed vs. unsigned notes.** Since server-authoritative writes already know the
+  player's identity at write time, optionally persist and display it as a signature on
+  shared/board notes — attributed vs. anonymous, cheap to add.
+- **Guestbook variant of the bulletin board.** A thin, append-only, signed-entry log
+  ("visited on day X") distinct from the task-oriented board — cheap once the board's
+  shared-doc infrastructure exists.
+- **Wax-seal "soft security"** for private documents/notes — tamper is *possible* but
+  leaves evidence, rather than a hard lock. Fits VS's grounded-realism ethos better than an
+  unbreakable lock. Consider native support or interop with the existing **Envelopes** mod
+  (github.com/SiiMeR/vs-envelopes).
+- Lower-priority / needs more investigation before committing: handwriting neatening with
+  practice (skill curve), item aging/wear visuals, Survival Handbook cross-referencing
+  (bookmark a Handbook entry as a task), milestone/tech-unlock auto-suggested tasks (VS has
+  no clean achievement-event hook — needs a research spike first).
+
+### UX lessons from PM/notetaking apps (Notion, Todoist, Bullet Journal, GTD, etc.)
+
+The core insight: **capture speed matters more than organization.** The game's own problem
+statement (long branching tech tree → distraction) is the same problem GTD calls "open-loop
+anxiety" — relief comes from getting a thought out fast, not from a well-organized system.
+Concrete, cheap changes this suggests:
+
+- **A dedicated quick-add hotkey** that jots one line without opening the full document —
+  likely the single highest-leverage UX investment for a *held* writing item (notebook/
+  tablet), more valuable than for a stationary block like the lectern.
+- **Sort completed tasks toward the bottom** (or a collapsed "Done (N)" group) using the
+  `MoveBlock` primitive we already have — mirrors Kanban's "card leaves the column"
+  satisfaction without adding columns/lanes.
+- **Reorder as select + step up/down**, not simulated drag — matches `MoveBlock(from, to)`
+  directly and is more robust than drag gestures in a small GUI panel.
+- **A "carry forward" migration action** for the clay tablet's 3-line cap: copy undone
+  tasks into a fresh tablet, clearing the old one — Bullet-Journal-style migration, and a
+  natural fit since the tablet's scarcity already forces the "is this still worth keeping?"
+  moment.
+- **Discipline reminder:** resist adding due dates, priority, or tags as structured
+  `ScribeBlock` fields. If wanted, let players encode them as plain-text conventions
+  (Bullet-Journal-style signifiers, e.g. a `!` prefix) — zero schema cost, opt-in, and
+  avoids the "empty field I feel obligated to fill in" trap that makes task apps feel like
+  admin work. A full multi-column Kanban board is a likely mismatch for VS's single-column
+  GUI list — skip it; the writing desk's "categories" already covers grouping better.
+
 For the full design record and rationale, see the project plan.
