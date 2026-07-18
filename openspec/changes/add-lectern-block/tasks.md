@@ -23,7 +23,7 @@
 
 - [ ] 3.1 Add `src/Mod/modinfo.json` (`type: code`, `side: Universal`, `requiredOnServer: true`, id/name/version, game 1.22 dependency)
 - [ ] 3.2 Confirm (in-game creative search / `.blockcode`) the vanilla "Aged book lectern" shape+texture codes to reuse; record them
-- [ ] 3.3 Add the lectern block JSON under `assets/scribe/blocktypes/` reusing that shape, wiring it to the custom block/block-entity classes
+- [ ] 3.3 Add the lectern block JSON under `assets/scribe/blocktypes/` reusing that shape, wiring it to the custom block/block-entity classes; creative-inventory only (no crafting recipe in v1)
 - [ ] 3.4 Add `assets/scribe/lang/en.json` for the block name, GUI labels, and hotkey name
 
 ## 4. Mod: block, persistence, networking (server-authoritative)
@@ -33,7 +33,7 @@
 - [ ] 4.3 Implement `BlockEntityScribeLectern` holding a `ScribeDocument`; `ToTreeAttributes`/`FromTreeAttributes` serialize via the Core codec (persist + initial sync)
 - [ ] 4.4 Define the `[ProtoContract]` edit message (Core-serialized document bytes + block position) and register it identically on both sides
 - [ ] 4.5 Server handler applies the incoming document to the block entity and calls `MarkDirty(true)` to persist + re-sync to all clients
-- [ ] 4.6 Register the rebindable open hotkey; open the GUI when the player's current block selection is a lectern (else do nothing)
+- [ ] 4.6 Implement the single-editor lock: server tracks position→holder UID; refuse a second opener with the "one person at a time" message; release on close and on disconnect/leave
 
 ## 5. Mod: editor GUI
 
@@ -50,6 +50,7 @@
 ## 7. In-game verification (local, this Mac)
 
 - [ ] 7.1 Build the mod and copy it into `~/Library/Application Support/VintagestoryData/Mods`; launch the game
-- [ ] 7.2 Place a lectern; open it by right-click AND by look+hotkey; add tasks, complete one, edit the note
+- [ ] 7.2 Place a lectern (from creative inventory); open it by right-click; add tasks, complete one, edit the note
 - [ ] 7.3 Save and reload the world; confirm the lectern's tasks and note persist
 - [ ] 7.4 Multiplayer check: run a local headless server (`dotnet ".../VintagestoryServer.dll" --dataPath ~/vsdata`) with the mod, connect the client, confirm an edit by one session is seen by another and that two lecterns hold independent documents
+- [ ] 7.5 Lock check: with the lectern open in one session, confirm a second session is refused with the "one person at a time" message, and that closing/disconnecting releases the lock

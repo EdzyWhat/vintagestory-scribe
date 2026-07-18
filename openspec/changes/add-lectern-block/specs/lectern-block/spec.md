@@ -13,23 +13,12 @@ world, and broken to be recovered.
 
 ### Requirement: Open the lectern's editor
 
-The system SHALL let a player open the lectern's editing GUI, both by looking at the
-block and pressing a rebindable hotkey, and by right-clicking the block.
+The system SHALL let a player open the lectern's editing GUI by right-clicking the block.
 
 #### Scenario: Open by right-click
 
 - **WHEN** a player right-clicks a placed lectern
 - **THEN** the Scribe editing GUI opens showing that lectern's tasks and note
-
-#### Scenario: Open by hotkey while looking at it
-
-- **WHEN** a player looks at a placed lectern and presses the (rebindable) open hotkey
-- **THEN** the Scribe editing GUI opens showing that lectern's tasks and note
-
-#### Scenario: Hotkey does nothing when not aimed at a lectern
-
-- **WHEN** a player presses the open hotkey while not looking at a lectern
-- **THEN** no Scribe GUI opens
 
 ### Requirement: Edit tasks and note through the GUI
 
@@ -61,6 +50,28 @@ survive a save/reload.
 
 - **WHEN** the client GUI changes a task or note
 - **THEN** the change is sent to the server and only takes lasting effect after the server applies it (a client that fails to reach the server does not permanently change the stored document)
+
+### Requirement: One editor at a time
+
+The system SHALL allow only one player to have a given lectern's editor open at a time.
+While one player has it open, another player who tries to open the same lectern SHALL be
+refused with a message such as "Only one person can use the lectern at a time," and the
+lock SHALL be released when the first player closes the editor (or disconnects).
+
+#### Scenario: Second player is refused while it's in use
+
+- **WHEN** player A has a lectern's editor open and player B right-clicks the same lectern
+- **THEN** player B's editor does not open and player B sees a "one person at a time" message
+
+#### Scenario: Lock releases on close
+
+- **WHEN** player A closes the lectern's editor and player B then right-clicks it
+- **THEN** player B's editor opens normally
+
+#### Scenario: Lock releases if the holder disconnects
+
+- **WHEN** player A has the editor open and then disconnects without closing it
+- **THEN** the lectern becomes available for another player to open
 
 ### Requirement: Multiplayer synchronization
 

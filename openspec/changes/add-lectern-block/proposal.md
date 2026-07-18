@@ -10,10 +10,11 @@ into playtesting.
 ## What Changes
 
 - Add a **lectern block** that reuses the vanilla "Aged book lectern" clutter shape (no
-  new art). Players place it, then open it by looking at it and pressing a rebindable
-  hotkey, or by right-clicking it.
+  new art). For this first slice the block is **creative-inventory only** (a crafting
+  recipe comes later). Players place it and open it by **right-clicking** it.
 - Opening the lectern shows a **GUI** to edit a **task checklist** (add / rename /
-  toggle-complete / delete items) and a **short freeform note**.
+  toggle-complete / delete items) and a **short freeform note**. Only **one player at a
+  time** may have a given lectern open.
 - The lectern's contents are **persisted with the world** and **synchronized to all
   players** in multiplayer, with the server as the source of truth.
 - Introduce the game-agnostic **document model** (tasks + note) and its mutation rules
@@ -22,9 +23,10 @@ into playtesting.
   `Core.Tests` projects, `modinfo.json`, GitHub Actions CI (Core build/test), and
   tag-driven release packaging.
 
-Non-goals for this change (deferred to later tiers): held note items, the `docId`-on-item
-store, clay/paper mechanics, ownership gating, categories, the pinned-task HUD, and
-drawing. The block simply stores one document keyed by its position.
+Non-goals for this change (deferred to later tiers): a crafting recipe (creative-only for
+now), held note items, the `docId`-on-item store, clay/paper mechanics, ownership gating,
+categories, the pinned-task HUD, and drawing. The block simply stores one document keyed
+by its position.
 
 ## Capabilities
 
