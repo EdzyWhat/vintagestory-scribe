@@ -50,6 +50,17 @@ section (freeform), interspersable and reorderable, with a reserved depth for fu
 - [x] 6.2 Add release packaging (`.github/workflows/release.yml` on tag `v*`) that builds the mod locally-style and zips `modinfo.json` + assets + the compiled DLL into `Releases/`
 - [x] 6.3 Verify CI is green on a pushed branch
 
+## 6b. Atlas integration tests (server-side behavior, local only)
+
+Runs via `dotnet test` against a real headless server; needs the game install + `VINTAGE_STORY`,
+so it stays a LOCAL suite (not run on cloud CI). Added after the block/GUI exist (groups 3-5).
+
+- [ ] 6b.1 Add a `tests/Integration.Tests` project referencing `Pixnop.Atlas.XUnit`, loading the built mod via `[AtlasMods(...)]`
+- [ ] 6b.2 Test persistence: place a lectern, edit its document, reload the world, assert the document survives (`RollbackWorld`/`RestartWorld` isolation)
+- [ ] 6b.3 Test server-authoritative edit: apply an edit packet, assert the block entity's stored document updates and re-syncs
+- [ ] 6b.4 Test the single-editor lock: first opener acquires it; a second opener is refused; lock releases on close/disconnect
+- [ ] 6b.5 Document how to run the Atlas suite locally in the README (it's excluded from cloud CI)
+
 ## 7. In-game verification (local, this Mac)
 
 - [ ] 7.1 Build the mod and copy it into `~/Library/Application Support/VintagestoryData/Mods`; launch the game
