@@ -143,6 +143,13 @@ Concrete, cheap changes this suggests:
   (crafting grid, blacksmithing, clayforming), so drag-to-reorder is the more consistent
   choice for this game specifically. `MoveBlock(from, to)` in Core doesn't care which
   interaction calls it, so this is purely a GUI-layer decision.
+- **Tab / Shift+Tab to save-and-move-focus between rows while editing**, so a keyboard-only
+  player can add/edit many rows in a row without reaching for the mouse: Tab commits the
+  active row's text and moves focus to the row below (creating a new row at the end if
+  already on the last one is a natural extension, not required for a first cut); Shift+Tab
+  does the same moving upward. Worth revisiting what other hotkey affordances pair well with
+  this once it's built (e.g. Enter to commit-and-stay, Ctrl+Enter to commit-and-add-below) —
+  survey this as a small batch rather than one-off requests.
 - **A "carry forward" migration action** for the clay tablet's 3-line cap: copy undone
   tasks into a fresh tablet, clearing the old one — Bullet-Journal-style migration, and a
   natural fit since the tablet's scarcity already forces the "is this still worth keeping?"

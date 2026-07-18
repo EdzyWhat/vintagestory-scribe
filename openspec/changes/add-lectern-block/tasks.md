@@ -55,13 +55,20 @@ server — a LOCAL suite only, not run on cloud CI.
 
 ## 5. Mod: editor GUI
 
-- [ ] 5.1 Implement `GuiDialogScribeLectern` (a `GuiDialogBlockEntity`) rendering the document's ordered blocks
-- [ ] 5.2 Each block row: task rows have a complete-toggle + editable text + delete; text-section rows have editable text + delete; plus "add task" / "add text section" controls
-- [ ] 5.3 Collapsible tool panel with a per-option **visibility-predicate hook** (the gating mechanism); wire NO real gates in v1 (all options visible)
-- [ ] 5.4 Reorder mode: mouse-drag reordering of block rows in the list (consistent with VS's mouse-driven crafting grid/blacksmithing/clayforming interactions), calling Core `MoveBlock(from, to)` on drop
-- [ ] 5.5 Text size control as a **client-side display preference** (scales GUI font; stored in local mod config, NOT in the document, NOT synced)
-- [ ] 5.6 Edit-mode toggle keybind: GUI opens in a resting state; pressing the key enters edit mode with an immersive "pull out the pen/stylus" beat
-- [ ] 5.7 On save, send the edited document to the server over the channel; reflect the server-synced state on reopen
+- [x] 5.1 Implement `GuiDialogScribeLectern` (a `GuiDialogBlockEntity`) rendering the document's ordered blocks
+- [x] 5.2 Each block row: task rows have a complete-toggle + editable text + delete; text-section rows have editable text + delete; plus "add task" / "add text section" controls
+- [x] 5.3 Collapsible tool panel with a per-option **visibility-predicate hook** (the gating mechanism); wire NO real gates in v1 (all options visible)
+- [x] 5.4 Reorder mode: mouse-drag reordering of block rows in the list (consistent with VS's mouse-driven crafting grid/blacksmithing/clayforming interactions), calling Core `MoveBlock(from, to)` on drop
+- [x] 5.5 Text size control as a **client-side display preference** (scales GUI font; stored in local mod config, NOT in the document, NOT synced)
+- [x] 5.6 Edit-mode toggle keybind: GUI opens in a resting state; pressing the key enters edit mode with an immersive "pull out the pen/stylus" beat
+      -> superseded during planning: no hotkey. Plain right-click opens a lock-free read
+         view; shift+right-click (or the in-GUI toggle button) opens/switches to the
+         lock-holding editor view. See design.md-equivalent plan notes for the full
+         two-view rationale.
+- [x] 5.7 On save, send the edited document to the server over the channel; reflect the server-synced state on reopen
+      -> superseded during planning: no explicit Save action. Editor-view edits autosave
+         via a throttled (1s) dirty-flag tick, force-flushed on mode-switch/close/
+         walk-away; the server acks failures (e.g. lost lock) back to the client.
 
 ## 6. Build & release automation
 
@@ -71,8 +78,15 @@ server — a LOCAL suite only, not run on cloud CI.
 
 ## 7. In-game verification (local, this Mac)
 
+Written for the two-view design: plain right-click opens a lock-free **read view**;
+shift+right-click (or the in-GUI toggle button) opens/switches to the lock-holding
+**editor view**.
+
 - [ ] 7.1 Build the mod and copy it into `~/Library/Application Support/VintagestoryData/Mods`; launch the game
-- [ ] 7.2 Place a lectern (from creative inventory); open it by right-click; add tasks, complete one, edit the note
+- [ ] 7.2 Place a lectern (from creative inventory); plain right-click opens a read view with no edit controls; shift+right-click opens the editor view; add tasks, complete one, edit the note, and confirm edits autosave (no explicit Save button — check a moment after typing, before closing, that the change already round-tripped)
 - [ ] 7.3 Save and reload the world; confirm the lectern's tasks and note persist
-- [ ] 7.4 Multiplayer check: run a local headless server (`dotnet ".../VintagestoryServer.dll" --dataPath ~/vsdata`) with the mod, connect the client, confirm an edit by one session is seen by another and that two lecterns hold independent documents
-- [ ] 7.5 Lock check: with the lectern open in one session, confirm a second session is refused with the "one person at a time" message, and that closing/disconnecting releases the lock
+- [ ] 7.4 Toggle check: from the editor view, click the in-GUI toggle to switch to read view (confirm the just-typed edit is reflected, not stale); from the read view, click the toggle to request the editor view back
+- [ ] 7.5 Multiplayer check: run a local headless server (`dotnet ".../VintagestoryServer.dll" --dataPath ~/vsdata`) with the mod, connect a second client, confirm an edit by one session is seen live in the other session's *read* view, and that two separate lecterns hold independent documents
+- [ ] 7.6 Lock check: with the editor view open in one session, confirm a second session's shift+right-click (or toggle-to-editor) is refused with the "one person at a time" message but still shows current content read-only; confirm a second session's plain right-click (read view) is granted normally even while the editor lock is held elsewhere; confirm closing the editor view or disconnecting releases the lock for the next requester
+- [ ] 7.7 Reorder + tool panel check: in the editor view, mouse-drag a row to reorder it; collapse/expand the tool panel; adjust the text-size slider and confirm the font scales and the preference persists across reopen
+- [ ] 7.8 Walk-away check: open the editor view, make an edit, walk out of interaction range without closing the GUI; confirm the dialog auto-closes and the edit was flushed (reopen and see it persisted) rather than lost

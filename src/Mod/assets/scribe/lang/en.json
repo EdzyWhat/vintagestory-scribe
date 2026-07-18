@@ -6,8 +6,14 @@
 	"scribe-gui-addtask": "Add Task",
 	"scribe-gui-addtext": "Add Text",
 	"scribe-gui-delete": "Delete",
-	"scribe-gui-save": "Save",
 	"scribe-gui-reorder": "Reorder",
 	"scribe-gui-textsize": "Text Size",
-	"scribe-gui-locked": "Only one person can use the lectern at a time."
+	"scribe-gui-locked": "Only one person can use the lectern at a time.",
+	"scribe-gui-switch-to-editor": "Edit",
+	"scribe-gui-switch-to-read": "Done Editing",
+	"scribe-gui-newtask-placeholder": "New task",
+	"scribe-gui-collapse": "Collapse",
+	"scribe-gui-expand": "Expand",
+	"scribe-gui-edit-hint": "This lectern is empty. Click Edit to add tasks or notes.",
+	"scribe-gui-save-failed": "Your changes could not be saved — the lectern is no longer locked to you."
 }

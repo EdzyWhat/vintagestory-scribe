@@ -12,7 +12,8 @@ public sealed class BlockScribeLectern : Block
     {
         if (world.BlockAccessor.GetBlockEntity(blockSel.Position) is BlockEntityScribeLectern lectern)
         {
-            lectern.OnRightClick(byPlayer);
+            bool wantEditor = byPlayer.Entity?.Controls?.ShiftKey == true;
+            lectern.OnRightClick(byPlayer, wantEditor);
         }
         return true;
     }

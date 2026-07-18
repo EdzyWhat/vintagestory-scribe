@@ -25,11 +25,11 @@ public class ServerAuthoritativeEditScenarios : AtlasScenarioBase
         var lectern = World.BlockEntityAt<BlockEntityScribeLectern>(pos);
         Assert.NotNull(lectern);
 
-        lectern!.OnRightClick(player.Player); // acquires the lock
+        lectern!.OnRightClick(player.Player, wantEditor: true); // acquires the lock
 
         var doc = new ScribeDocument();
         doc.AddTask("Build a forge");
-        lectern.ApplyEdit(player.Player, ScribeDocumentCodec.Serialize(doc));
+        Assert.True(lectern.ApplyEdit(player.Player, ScribeDocumentCodec.Serialize(doc)));
 
         Assert.Single(lectern.Document.Blocks);
         Assert.Equal("Build a forge", lectern.Document.Blocks[0].Text);
@@ -47,13 +47,13 @@ public class ServerAuthoritativeEditScenarios : AtlasScenarioBase
         var lectern = World.BlockEntityAt<BlockEntityScribeLectern>(pos);
         Assert.NotNull(lectern);
 
-        lectern!.OnRightClick(holder.Player); // holder acquires the lock
+        lectern!.OnRightClick(holder.Player, wantEditor: true); // holder acquires the lock
 
         var attemptedEdit = new ScribeDocument();
         attemptedEdit.AddTask("This should not be applied");
 
         // The bystander never acquired the lock, so their edit must be a no-op.
-        lectern.ApplyEdit(bystander.Player, ScribeDocumentCodec.Serialize(attemptedEdit));
+        Assert.False(lectern.ApplyEdit(bystander.Player, ScribeDocumentCodec.Serialize(attemptedEdit)));
 
         Assert.Empty(lectern.Document.Blocks);
     }

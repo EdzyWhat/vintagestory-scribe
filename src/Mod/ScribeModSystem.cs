@@ -13,6 +13,7 @@ namespace Scribe;
 public sealed class ScribeModSystem : ModSystem
 {
     public const string NetworkChannelName = "scribe";
+    public const string ClientConfigFileName = "scribe-client-config.json";
 
     private ICoreClientAPI? capi;
     private ICoreServerAPI? sapi;
@@ -24,10 +25,11 @@ public sealed class ScribeModSystem : ModSystem
         api.RegisterBlockClass("BlockScribeLectern", typeof(BlockScribeLectern));
         api.RegisterBlockEntityClass("ScribeLectern", typeof(BlockEntityScribeLectern));
 
-        // Both message types must be registered in this same order on both sides.
+        // All message types must be registered in this same order on both sides.
         api.Network.RegisterChannel(NetworkChannelName)
             .RegisterMessageType<ScribeEditDocumentMessage>()
-            .RegisterMessageType<ScribeReleaseLockMessage>();
+            .RegisterMessageType<ScribeReleaseLockMessage>()
+            .RegisterMessageType<ScribeRequestAccessMessage>();
     }
 
     public override void StartClientSide(ICoreClientAPI api)
@@ -47,6 +49,7 @@ public sealed class ScribeModSystem : ModSystem
         var channel = api.Network.GetChannel(NetworkChannelName);
         channel.SetMessageHandler<ScribeEditDocumentMessage>(OnServerReceivedEdit);
         channel.SetMessageHandler<ScribeReleaseLockMessage>(OnServerReceivedReleaseLock);
+        channel.SetMessageHandler<ScribeRequestAccessMessage>(OnServerReceivedRequestAccess);
     }
 
     private void OnClientReceivedEditReply(ScribeEditDocumentMessage message)
@@ -61,9 +64,12 @@ public sealed class ScribeModSystem : ModSystem
     private void OnServerReceivedEdit(IServerPlayer fromPlayer, ScribeEditDocumentMessage message)
     {
         var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
-        if (sapi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        if (sapi is not null && sapi.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
         {
-            lectern.ApplyEdit(fromPlayer, message.DocumentBytes);
+            if (!lectern.ApplyEdit(fromPlayer, message.DocumentBytes))
+            {
+                lectern.SendSaveFailedAck(sapi, fromPlayer);
+            }
         }
     }
 
@@ -73,6 +79,15 @@ public sealed class ScribeModSystem : ModSystem
         if (sapi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
         {
             lectern.ReleaseLock(fromPlayer.PlayerUID);
+        }
+    }
+
+    private void OnServerReceivedRequestAccess(IServerPlayer fromPlayer, ScribeRequestAccessMessage message)
+    {
+        var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
+        if (sapi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        {
+            lectern.OnRequestAccess(fromPlayer, message.WantEditor);
         }
     }
 }

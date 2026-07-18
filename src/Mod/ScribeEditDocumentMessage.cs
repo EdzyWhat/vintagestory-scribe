@@ -32,4 +32,11 @@ public sealed class ScribeEditDocumentMessage
     /// <summary>Server -&gt; client only: shown to the player when <see cref="Granted"/> is false.</summary>
     [ProtoMember(6)]
     public string? RefusalReason { get; set; }
+
+    /// <summary>
+    /// Server -&gt; client only: whether this reply is for the editor view (true) or the
+    /// read view (false). Meaningless when this message is a client -&gt; server edit submission.
+    /// </summary>
+    [ProtoMember(7)]
+    public bool EditorMode { get; set; }
 }
