@@ -47,5 +47,14 @@ age (the saw); anything past that is cosmetic.
 - Handbook/wiki authoring pass (guides players through the tiers; documents which features
   live on which item/block). Spans all tiers; do near shipping.
 - Credit JeanPierre (Wanderer's Sketchbook) in CREDITS — we borrow its data model + GUI ideas.
+- Skeuomorphic collapse/expand control: explore making the edit-options toggle a bookmark,
+  ribbon, or similar tactile element instead of a plain button (fits the writing-GUI panel).
+- Custom fonts via open-source/licensed font faces: **cuneiform-style block letters** for
+  the clay tablet's stamped text, and a **rustic/hand-written script** for books/notebooks.
+  Purely presentational (render-time font swap per tier); verify license terms allow
+  bundling before picking a specific font.
+- Localization (`lang/` files beyond `en.json`) for all player-facing GUI text and item/block
+  names, so the mod is translatable. Worth setting up the `lang` key structure early (v1) even
+  if only English is authored at first, so later strings don't need retrofitting.
 
 For the full design record and rationale, see the project plan.
