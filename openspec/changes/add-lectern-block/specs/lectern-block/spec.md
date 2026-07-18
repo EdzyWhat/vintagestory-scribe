@@ -2,9 +2,10 @@
 
 ### Requirement: Craftable, placeable lectern block
 
-The system SHALL provide a lectern block that reuses the vanilla "Aged book lectern"
-appearance, can be obtained (via a crafting recipe or creative inventory), placed in the
-world, and broken to be recovered.
+The system SHALL provide a lectern block that reuses the vanilla "lecturn-book-open"
+appearance (plain wood, not an "aged"/scavenged variant, since the block is meant to be
+crafted from ordinary materials rather than found), can be obtained (via a crafting
+recipe or creative inventory), placed in the world, and broken to be recovered.
 
 #### Scenario: Place and break the lectern
 

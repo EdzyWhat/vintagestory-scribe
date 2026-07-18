@@ -20,10 +20,10 @@ age (the saw); anything past that is cosmetic.
 
 ## Staged plan
 
-- **v1 — Lectern slice** *(current)*: one lectern block (reuses the vanilla "Aged book
-  lectern" shape) with a task checklist + short note, server-authoritative and
-  multiplayer-safe. Goal: something playable to test. Built modularly so later tiers
-  slot in without rework.
+- **v1 — Lectern slice** *(current)*: one lectern block (reuses the vanilla
+  "lecturn-book-open" shape — plain wood, not an "aged" scavenged variant) with a task
+  checklist + short note, server-authoritative and multiplayer-safe. Goal: something
+  playable to test. Built modularly so later tiers slot in without rework.
 - **v2 — Notebook (collection):** leather-bound held item, infinite pages. First held
   artifact → introduces the `docId`-on-item store the clay tablet later reuses.
 - **v3 — Clay tablet (scratch):** soft/unfired item, clay-color-tinted 3-line UI,

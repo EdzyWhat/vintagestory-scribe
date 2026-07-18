@@ -24,10 +24,14 @@ section (freeform), interspersable and reorderable, with a reserved depth for fu
 
 ## 3. Mod: assets & mod metadata
 
-- [ ] 3.1 Add `src/Mod/modinfo.json` (`type: code`, `side: Universal`, `requiredOnServer: true`, id/name/version, game 1.22 dependency)
-- [ ] 3.2 Confirm (in-game creative search / `.blockcode`) the vanilla "Aged book lectern" shape+texture codes to reuse; record them
-- [ ] 3.3 Add the lectern block JSON under `assets/scribe/blocktypes/` reusing that shape, wiring it to the custom block/block-entity classes; creative-inventory only (no crafting recipe in v1)
-- [ ] 3.4 Add `assets/scribe/lang/en.json` for the block name, GUI labels, and hotkey name
+- [x] 3.1 Add `src/Mod/modinfo.json` (`type: code`, `side: Universal`, `requiredOnServer: true`, id/name/version, game 1.22 dependency)
+- [x] 3.2 Confirm (in-game creative search / `.blockcode`) the vanilla lectern shape+texture codes to reuse; record them
+      -> confirmed: vanilla `clutter` block, type `bookshelves/lecturn-book-open`
+         (switched from the "aged" variant: aged implies scavenged ancient material,
+         not something crafted from ordinary wood); shape
+         `block/clutter/bookshelves/lecturn-book-open`, textures verified on disk.
+- [x] 3.3 Add the lectern block JSON under `assets/scribe/blocktypes/` reusing that shape, wiring it to the custom block/block-entity classes; creative-inventory only (no crafting recipe in v1)
+- [x] 3.4 Add `assets/scribe/lang/en.json` for the block name, GUI labels, and hotkey name
 
 ## 4. Mod: block, persistence, networking (server-authoritative)
 

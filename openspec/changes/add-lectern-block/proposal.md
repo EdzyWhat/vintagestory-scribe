@@ -9,7 +9,7 @@ into playtesting.
 
 ## What Changes
 
-- Add a **lectern block** that reuses the vanilla "Aged book lectern" clutter shape (no
+- Add a **lectern block** that reuses the vanilla "lecturn-book-open" clutter shape (no
   new art). For this first slice the block is **creative-inventory only** (a crafting
   recipe comes later). Players place it and open it by **right-clicking** it.
 - Opening the lectern shows a **GUI** to edit a **task checklist** (add / rename /
