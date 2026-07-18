@@ -1,0 +1,42 @@
+schema: spec-driven
+
+context: |
+  Project: Scribe — a note-taking & light task-management mod for Vintage Story 1.22.x.
+  Purpose: help players remember goals across VS's long, branching progression. Tasks are
+  the priority (dead-easy to view/edit); immersive journaling is secondary. Non-consumptive.
+
+  Tech stack:
+  - C# targeting .NET 10 (net10.0). Game v1.22.3 installed at /Applications/Vintage Story.app
+    (the VINTAGE_STORY env var points there); references VintagestoryAPI.dll from it.
+  - Mod type: code. side: Universal, requiredOnServer: true.
+  - No third-party mod libraries — vanilla VintagestoryAPI only. ConfigLib may later be an
+    OPTIONAL soft dependency (guarded by IsModEnabled), never hard. Hotkeys use the native
+    rebindable system.
+
+  Architecture (the central discipline — keep it):
+  - src/Core/ = game-agnostic library: document/task/note models, mutation rules, and
+    serialization codec. It MUST NOT reference the Vintage Story API, so it is unit-testable
+    with `dotnet test` and no game install (tests live in tests/Core.Tests, xUnit).
+  - src/Mod/ = the thin adapter that maps the game API (ICoreAPI, GuiDialog, BlockEntity,
+    ItemStack, network packets) onto Core.
+  - Data model: an artifact carries a short id; the actual note/task document lives in a
+    server-side store keyed by it. All edits flow GUI -> network channel -> server mutates
+    store -> syncs back (server-authoritative). v1 keys documents by block position; a
+    docId-on-item path arrives with the notebook (v2).
+  - Persistence/sync mirrors the vanilla Sign flow (ToTreeAttributes/FromTreeAttributes,
+    SendBlockEntityPacket, MarkDirty). Private blocks gate on ownerUID; public blocks don't.
+
+  Process & tooling:
+  - Git repo, MIT license, GitHub Actions CI (builds/tests Core only — cloud runners have no
+    game DLL), tag-driven release automation packaging the mod zip.
+  - Secondary goal is the author rebuilding dev skills (Git, CI, spec-driven development),
+    so favor clear, well-explained, conventional solutions.
+
+  Current focus: v1 — a single "lectern" block (reuses the vanilla "Aged book lectern"
+  clutter shape) with a task checklist + short freeform note, server-authoritative and
+  multiplayer-safe. See ROADMAP.md for later tiers.
+
+rules:
+  tasks:
+    - Each task should be a small, independently verifiable step.
+    - Keep Core logic free of any Vintage Story API references.
