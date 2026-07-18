@@ -35,12 +35,23 @@ section (freeform), interspersable and reorderable, with a reserved depth for fu
 
 ## 4. Mod: block, persistence, networking (server-authoritative)
 
+Atlas tests interleave here rather than batching at the end: each test lands right after
+the implementation task that makes it possible, so persistence/networking/the lock get a
+fast, automated check before we ever touch the GUI or manual playtesting (group 7). Atlas
+needs the game install (`VINTAGE_STORY`) and runs via `dotnet test` against a real headless
+server — a LOCAL suite only, not run on cloud CI.
+
 - [ ] 4.1 Implement `ScribeModSystem` (register block/block-entity classes and the network channel + message type in `Start`; per-side handlers in `StartClientSide`/`StartServerSide`)
 - [ ] 4.2 Implement `BlockScribeLectern` (placement/break; `OnBlockInteractStart` opens the GUI client-side)
 - [ ] 4.3 Implement `BlockEntityScribeLectern` holding a `ScribeDocument`; `ToTreeAttributes`/`FromTreeAttributes` serialize via the Core codec (persist + initial sync)
+- [ ] 4.3a Add a `tests/Integration.Tests` project referencing `Pixnop.Atlas.XUnit`, loading the built mod via `[AtlasMods(...)]` — the first point there's something real to boot a server against
+- [ ] 4.3b Atlas test: persistence — place a lectern, edit its document, reload the world, assert the document survives (`RollbackWorld`/`RestartWorld` isolation)
 - [ ] 4.4 Define the `[ProtoContract]` edit message (Core-serialized document bytes + block position) and register it identically on both sides
 - [ ] 4.5 Server handler applies the incoming document to the block entity and calls `MarkDirty(true)` to persist + re-sync to all clients
+- [ ] 4.5a Atlas test: server-authoritative edit — send an edit packet, assert the block entity's stored document updates and re-syncs
 - [ ] 4.6 Implement the single-editor lock: server tracks position→holder UID; refuse a second opener with the "one person at a time" message; release on close and on disconnect/leave
+- [ ] 4.6a Atlas test: the lock — first opener acquires it; a second opener is refused; lock releases on close/disconnect
+- [ ] 4.7 Document how to run the Atlas suite locally in the README (it's excluded from cloud CI)
 
 ## 5. Mod: editor GUI
 
@@ -57,17 +68,6 @@ section (freeform), interspersable and reorderable, with a reserved depth for fu
 - [x] 6.1 Add `.github/workflows/ci.yml`: on push/PR, `dotnet test` the Core project (cloud runners have no game DLL) — document this scope in the README
 - [x] 6.2 Add release packaging (`.github/workflows/release.yml` on tag `v*`) that builds the mod locally-style and zips `modinfo.json` + assets + the compiled DLL into `Releases/`
 - [x] 6.3 Verify CI is green on a pushed branch
-
-## 6b. Atlas integration tests (server-side behavior, local only)
-
-Runs via `dotnet test` against a real headless server; needs the game install + `VINTAGE_STORY`,
-so it stays a LOCAL suite (not run on cloud CI). Added after the block/GUI exist (groups 3-5).
-
-- [ ] 6b.1 Add a `tests/Integration.Tests` project referencing `Pixnop.Atlas.XUnit`, loading the built mod via `[AtlasMods(...)]`
-- [ ] 6b.2 Test persistence: place a lectern, edit its document, reload the world, assert the document survives (`RollbackWorld`/`RestartWorld` isolation)
-- [ ] 6b.3 Test server-authoritative edit: apply an edit packet, assert the block entity's stored document updates and re-syncs
-- [ ] 6b.4 Test the single-editor lock: first opener acquires it; a second opener is refused; lock releases on close/disconnect
-- [ ] 6b.5 Document how to run the Atlas suite locally in the README (it's excluded from cloud CI)
 
 ## 7. In-game verification (local, this Mac)
 
