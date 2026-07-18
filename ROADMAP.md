@@ -41,5 +41,7 @@ age (the saw); anything past that is cosmetic.
 - Paper progression (reed/papyrus → parchment).
 - Location-tagged entries.
 - Optional in-game settings panel (ConfigLib, soft dependency).
+- Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
+  so the model reads as "editing the paper here" rather than managing/taking a book.
 
 For the full design record and rationale, see the project plan.
