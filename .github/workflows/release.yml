@@ -1,0 +1,37 @@
+name: Release
+
+# Publishes a GitHub Release when you push a version tag (e.g. v0.1.0).
+#
+# NOTE: GitHub's cloud runners cannot compile the Mod (no Vintage Story install / the game
+# DLLs are not redistributable). So this workflow does NOT build the mod zip itself. The
+# intended flow is:
+#   1. Locally run `./build/package.sh` to produce Releases/scribe_<version>.zip
+#   2. Create the tag and upload that zip to the release, e.g.:
+#        git tag v0.1.0 && git push origin v0.1.0
+#        gh release create v0.1.0 Releases/scribe_0.1.0.zip --generate-notes
+#
+# This workflow simply ensures a Release object exists for the tag with generated notes;
+# if you prefer, do the whole thing with the `gh release create` command above and skip it.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag || echo "Release may already exist; upload the zip with 'gh release upload'."
