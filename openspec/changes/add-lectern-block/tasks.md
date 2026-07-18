@@ -45,7 +45,7 @@
 
 - [x] 6.1 Add `.github/workflows/ci.yml`: on push/PR, `dotnet test` the Core project (cloud runners have no game DLL) — document this scope in the README
 - [x] 6.2 Add release packaging (`.github/workflows/release.yml` on tag `v*`) that builds the mod locally-style and zips `modinfo.json` + assets + the compiled DLL into `Releases/`
-- [ ] 6.3 Verify CI is green on a pushed branch
+- [x] 6.3 Verify CI is green on a pushed branch
 
 ## 7. In-game verification (local, this Mac)
 
