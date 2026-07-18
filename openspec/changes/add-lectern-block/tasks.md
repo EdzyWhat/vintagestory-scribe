@@ -41,15 +41,15 @@ fast, automated check before we ever touch the GUI or manual playtesting (group 
 needs the game install (`VINTAGE_STORY`) and runs via `dotnet test` against a real headless
 server — a LOCAL suite only, not run on cloud CI.
 
-- [ ] 4.1 Implement `ScribeModSystem` (register block/block-entity classes and the network channel + message type in `Start`; per-side handlers in `StartClientSide`/`StartServerSide`)
-- [ ] 4.2 Implement `BlockScribeLectern` (placement/break; `OnBlockInteractStart` opens the GUI client-side)
-- [ ] 4.3 Implement `BlockEntityScribeLectern` holding a `ScribeDocument`; `ToTreeAttributes`/`FromTreeAttributes` serialize via the Core codec (persist + initial sync)
+- [x] 4.1 Implement `ScribeModSystem` (register block/block-entity classes and the network channel + message type in `Start`; per-side handlers in `StartClientSide`/`StartServerSide`)
+- [x] 4.2 Implement `BlockScribeLectern` (placement/break; `OnBlockInteractStart` opens the GUI client-side)
+- [x] 4.3 Implement `BlockEntityScribeLectern` holding a `ScribeDocument`; `ToTreeAttributes`/`FromTreeAttributes` serialize via the Core codec (persist + initial sync)
 - [ ] 4.3a Add a `tests/Integration.Tests` project referencing `Pixnop.Atlas.XUnit`, loading the built mod via `[AtlasMods(...)]` — the first point there's something real to boot a server against
 - [ ] 4.3b Atlas test: persistence — place a lectern, edit its document, reload the world, assert the document survives (`RollbackWorld`/`RestartWorld` isolation)
-- [ ] 4.4 Define the `[ProtoContract]` edit message (Core-serialized document bytes + block position) and register it identically on both sides
-- [ ] 4.5 Server handler applies the incoming document to the block entity and calls `MarkDirty(true)` to persist + re-sync to all clients
+- [x] 4.4 Define the `[ProtoContract]` edit message (Core-serialized document bytes + block position) and register it identically on both sides
+- [x] 4.5 Server handler applies the incoming document to the block entity and calls `MarkDirty(true)` to persist + re-sync to all clients
 - [ ] 4.5a Atlas test: server-authoritative edit — send an edit packet, assert the block entity's stored document updates and re-syncs
-- [ ] 4.6 Implement the single-editor lock: server tracks position→holder UID; refuse a second opener with the "one person at a time" message; release on close and on disconnect/leave
+- [x] 4.6 Implement the single-editor lock: server tracks position→holder UID; refuse a second opener with the "one person at a time" message; release on close and on disconnect/leave
 - [ ] 4.6a Atlas test: the lock — first opener acquires it; a second opener is refused; lock releases on close/disconnect
 - [ ] 4.7 Document how to run the Atlas suite locally in the README (it's excluded from cloud CI)
 
