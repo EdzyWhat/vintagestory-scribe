@@ -2,7 +2,7 @@ using Scribe.Core;
 
 namespace Scribe.Core.Tests;
 
-// Tests for the document structure and task mutations.
+// Tests for the document as an ordered sequence of blocks (tasks and text sections).
 // Each test maps to a WHEN/THEN scenario in the task-note-document spec.
 public class ScribeDocumentTests
 {
@@ -13,35 +13,50 @@ public class ScribeDocumentTests
     {
         var doc = new ScribeDocument();
 
-        Assert.Empty(doc.Tasks);
-        Assert.Equal("", doc.Note);
+        Assert.Empty(doc.Blocks);
     }
 
     [Fact]
-    public void Tasks_PreserveInsertionOrder()
+    public void Blocks_PreserveInsertionOrder()
     {
         var doc = new ScribeDocument();
 
         doc.AddTask("First");
-        doc.AddTask("Second");
+        doc.AddTextSection("A note");
         doc.AddTask("Third");
 
-        Assert.Equal(new[] { "First", "Second", "Third" }, doc.Tasks.Select(t => t.Text));
+        Assert.Equal(
+            new[] { ("First", ScribeBlockKind.Task), ("A note", ScribeBlockKind.Text), ("Third", ScribeBlockKind.Task) },
+            doc.Blocks.Select(b => (b.Text, b.Kind)));
     }
 
-    // --- Add a task ---
+    // --- Add blocks ---
 
     [Fact]
-    public void AddTask_AddsAnIncompleteTask()
+    public void AddTask_AddsAnIncompleteTaskBlock()
     {
         var doc = new ScribeDocument();
 
         bool ok = doc.AddTask("Find copper");
 
         Assert.True(ok);
-        var task = Assert.Single(doc.Tasks);
-        Assert.Equal("Find copper", task.Text);
-        Assert.False(task.Done);
+        var block = Assert.Single(doc.Blocks);
+        Assert.Equal(ScribeBlockKind.Task, block.Kind);
+        Assert.Equal("Find copper", block.Text);
+        Assert.False(block.Done);
+    }
+
+    [Fact]
+    public void AddTextSection_AddsATextBlock()
+    {
+        var doc = new ScribeDocument();
+
+        bool ok = doc.AddTextSection("Copper is south of the ridge");
+
+        Assert.True(ok);
+        var block = Assert.Single(doc.Blocks);
+        Assert.Equal(ScribeBlockKind.Text, block.Kind);
+        Assert.Equal("Copper is south of the ridge", block.Text);
     }
 
     [Theory]
@@ -52,10 +67,8 @@ public class ScribeDocumentTests
     {
         var doc = new ScribeDocument();
 
-        bool ok = doc.AddTask(blank);
-
-        Assert.False(ok);
-        Assert.Empty(doc.Tasks);
+        Assert.False(doc.AddTask(blank));
+        Assert.Empty(doc.Blocks);
     }
 
     [Fact]
@@ -65,40 +78,62 @@ public class ScribeDocumentTests
 
         doc.AddTask("  Find copper  ");
 
-        Assert.Equal("Find copper", doc.Tasks[0].Text);
+        Assert.Equal("Find copper", doc.Blocks[0].Text);
     }
 
-    // --- Rename a task ---
+    [Fact]
+    public void AddTextSection_AllowsBlankText()
+    {
+        // A text section may be empty (e.g. a spacer the player is about to fill in).
+        var doc = new ScribeDocument();
+
+        bool ok = doc.AddTextSection("");
+
+        Assert.True(ok);
+        Assert.Equal("", doc.Blocks[0].Text);
+    }
+
+    // --- Edit block text ---
 
     [Fact]
-    public void RenameTask_ChangesTextAndKeepsDoneFlag()
+    public void SetBlockText_ChangesTextAndKeepsDoneFlag()
     {
         var doc = new ScribeDocument();
         doc.AddTask("Find copper");
         doc.ToggleTask(0); // now done
 
-        bool ok = doc.RenameTask(0, "Find tin");
+        bool ok = doc.SetBlockText(0, "Find tin");
 
         Assert.True(ok);
-        Assert.Equal("Find tin", doc.Tasks[0].Text);
-        Assert.True(doc.Tasks[0].Done);
+        Assert.Equal("Find tin", doc.Blocks[0].Text);
+        Assert.True(doc.Blocks[0].Done);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void RenameTask_RejectsBlankText(string blank)
+    public void SetBlockText_RejectsBlankForTask(string blank)
     {
         var doc = new ScribeDocument();
         doc.AddTask("Find copper");
 
-        bool ok = doc.RenameTask(0, blank);
-
-        Assert.False(ok);
-        Assert.Equal("Find copper", doc.Tasks[0].Text);
+        Assert.False(doc.SetBlockText(0, blank));
+        Assert.Equal("Find copper", doc.Blocks[0].Text);
     }
 
-    // --- Toggle completion ---
+    [Fact]
+    public void SetBlockText_AllowsBlankForTextSection()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTextSection("something");
+
+        bool ok = doc.SetBlockText(0, "");
+
+        Assert.True(ok);
+        Assert.Equal("", doc.Blocks[0].Text);
+    }
+
+    // --- Toggle completion (tasks only) ---
 
     [Fact]
     public void ToggleTask_IncompleteBecomesComplete()
@@ -106,10 +141,8 @@ public class ScribeDocumentTests
         var doc = new ScribeDocument();
         doc.AddTask("Build a forge");
 
-        bool ok = doc.ToggleTask(0);
-
-        Assert.True(ok);
-        Assert.True(doc.Tasks[0].Done);
+        Assert.True(doc.ToggleTask(0));
+        Assert.True(doc.Blocks[0].Done);
     }
 
     [Fact]
@@ -121,23 +154,70 @@ public class ScribeDocumentTests
 
         doc.ToggleTask(0);
 
-        Assert.False(doc.Tasks[0].Done);
+        Assert.False(doc.Blocks[0].Done);
     }
 
-    // --- Delete a task ---
+    [Fact]
+    public void ToggleTask_OnTextSection_Fails()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTextSection("not a task");
+
+        Assert.False(doc.ToggleTask(0));
+    }
+
+    // --- Delete ---
 
     [Fact]
-    public void DeleteTask_RemovesByIndexAndPreservesOrder()
+    public void DeleteBlock_RemovesByIndexAndPreservesOrder()
     {
         var doc = new ScribeDocument();
         doc.AddTask("A");
         doc.AddTask("B");
         doc.AddTask("C");
 
-        bool ok = doc.DeleteTask(1);
+        Assert.True(doc.DeleteBlock(1));
+        Assert.Equal(new[] { "A", "C" }, doc.Blocks.Select(b => b.Text));
+    }
+
+    // --- Reorder ---
+
+    [Fact]
+    public void MoveBlock_ReordersWithinList()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTask("A");
+        doc.AddTask("B");
+        doc.AddTask("C");
+
+        bool ok = doc.MoveBlock(0, 2); // move A to the end
 
         Assert.True(ok);
-        Assert.Equal(new[] { "A", "C" }, doc.Tasks.Select(t => t.Text));
+        Assert.Equal(new[] { "B", "C", "A" }, doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact]
+    public void MoveBlock_UpwardReorders()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTask("A");
+        doc.AddTask("B");
+        doc.AddTask("C");
+
+        doc.MoveBlock(2, 0); // move C to the front
+
+        Assert.Equal(new[] { "C", "A", "B" }, doc.Blocks.Select(b => b.Text));
+    }
+
+    [Fact]
+    public void MoveBlock_SamePosition_IsNoOpSuccess()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTask("A");
+        doc.AddTask("B");
+
+        Assert.True(doc.MoveBlock(1, 1));
+        Assert.Equal(new[] { "A", "B" }, doc.Blocks.Select(b => b.Text));
     }
 
     // --- Out-of-range safety ---
@@ -149,34 +229,12 @@ public class ScribeDocumentTests
     public void Operations_OnInvalidIndex_FailSafely(int badIndex)
     {
         var doc = new ScribeDocument();
-        // document is empty, so any index is invalid
 
-        Assert.False(doc.RenameTask(badIndex, "x"));
+        Assert.False(doc.SetBlockText(badIndex, "x"));
         Assert.False(doc.ToggleTask(badIndex));
-        Assert.False(doc.DeleteTask(badIndex));
-        Assert.Empty(doc.Tasks);
-    }
-
-    // --- Edit the note ---
-
-    [Fact]
-    public void SetNote_StoresText()
-    {
-        var doc = new ScribeDocument();
-
-        doc.SetNote("Copper is south of the ridge");
-
-        Assert.Equal("Copper is south of the ridge", doc.Note);
-    }
-
-    [Fact]
-    public void SetNote_CanClearToEmpty()
-    {
-        var doc = new ScribeDocument();
-        doc.SetNote("something");
-
-        doc.SetNote("");
-
-        Assert.Equal("", doc.Note);
+        Assert.False(doc.DeleteBlock(badIndex));
+        Assert.False(doc.MoveBlock(badIndex, 0));
+        Assert.False(doc.MoveBlock(0, badIndex));
+        Assert.Empty(doc.Blocks);
     }
 }

@@ -8,13 +8,15 @@ namespace Scribe.Core;
 /// malformed input fails safely (returns false) rather than throwing.
 ///
 /// Format (little-endian via <see cref="BinaryWriter"/>):
-///   [4 bytes magic "SCRB"][1 byte version][int taskCount][per task: bool done, string text][string note]
-/// A hand-rolled format keeps Core free of any external dependency.
+///   [4 bytes magic "SCRB"][1 byte version][int blockCount]
+///   [per block: byte kind, bool done, int depth, string text]
+/// A hand-rolled format keeps Core free of any external dependency. The version byte lets
+/// us evolve the format later while still reading older saves.
 /// </summary>
 public static class ScribeDocumentCodec
 {
     private static readonly byte[] Magic = "SCRB"u8.ToArray();
-    private const byte Version = 1;
+    private const byte Version = 2; // v1 was flat tasks + a single note; v2 is ordered blocks.
 
     public static byte[] Serialize(ScribeDocument doc)
     {
@@ -23,13 +25,14 @@ public static class ScribeDocumentCodec
         {
             w.Write(Magic);
             w.Write(Version);
-            w.Write(doc.Tasks.Count);
-            foreach (var task in doc.Tasks)
+            w.Write(doc.Blocks.Count);
+            foreach (var block in doc.Blocks)
             {
-                w.Write(task.Done);
-                w.Write(task.Text);
+                w.Write((byte)block.Kind);
+                w.Write(block.Done);
+                w.Write(block.Depth);
+                w.Write(block.Text);
             }
-            w.Write(doc.Note);
         }
         return ms.ToArray();
     }
@@ -50,20 +53,21 @@ public static class ScribeDocumentCodec
             byte version = r.ReadByte();
             if (version != Version) return false;
 
-            int taskCount = r.ReadInt32();
-            if (taskCount < 0 || taskCount > bytes.Length) return false; // sanity bound
+            int blockCount = r.ReadInt32();
+            if (blockCount < 0 || blockCount > bytes.Length) return false; // sanity bound
+
+            var blocks = new List<ScribeBlock>(blockCount);
+            for (int i = 0; i < blockCount; i++)
+            {
+                var kind = (ScribeBlockKind)r.ReadByte();
+                bool done = r.ReadBoolean();
+                int depth = r.ReadInt32();
+                string text = r.ReadString();
+                blocks.Add(new ScribeBlock(kind, text, done, depth));
+            }
 
             var doc = new ScribeDocument();
-            var tasks = new List<ScribeTask>(taskCount);
-            for (int i = 0; i < taskCount; i++)
-            {
-                bool done = r.ReadBoolean();
-                string text = r.ReadString();
-                tasks.Add(new ScribeTask(text, done));
-            }
-            doc.SetTasks(tasks);
-            doc.SetNote(r.ReadString());
-
+            doc.SetBlocks(blocks);
             document = doc;
             return true;
         }

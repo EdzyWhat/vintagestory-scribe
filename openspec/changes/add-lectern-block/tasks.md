@@ -6,18 +6,21 @@
 - [x] 1.4 Create `src/Mod/Mod.csproj` referencing `Core` and `VintagestoryAPI.dll` via `<HintPath>$(VintageStoryPath)/VintagestoryAPI.dll</HintPath>` (Private=false)
 - [x] 1.5 Add all three projects to the solution; confirm Core, Core.Tests, AND Mod all build
 
-## 2. Core: task-note document model (test-first)
+## 2. Core: block-based document model (test-first)
 
-- [x] 2.1 Write failing xUnit tests for the document structure (new doc is empty; task order preserved)
-- [x] 2.2 Write failing tests for add task (adds to end; trims; rejects blank)
-- [x] 2.3 Write failing tests for rename task (changes text, keeps done flag; rejects blank; invalid position fails safely)
-- [x] 2.4 Write failing tests for toggle completion (both directions; invalid position fails safely)
-- [x] 2.5 Write failing tests for delete task (removes by position, preserves order; invalid position fails safely)
-- [x] 2.6 Write failing tests for editing the note (set and clear)
-- [x] 2.7 Write failing tests for the serialization round-trip (content preserved; malformed/empty bytes fail safely without throwing)
-- [x] 2.8 Implement `ScribeTask` (Text, Done) and `ScribeDocument` (tasks + note) with the mutation methods returning success/failure
+Document = an ordered sequence of blocks; each block is a task (text + done) or a text
+section (freeform), interspersable and reorderable, with a reserved depth for future nesting.
+
+- [x] 2.1 Write failing xUnit tests for the document structure (new doc is empty; block order + kinds preserved)
+- [x] 2.2 Write failing tests for add task / add text section (adds to end; task trims + rejects blank; text section allows empty)
+- [x] 2.3 Write failing tests for edit block text (keeps done flag/kind; task rejects blank; text section allows empty)
+- [x] 2.4 Write failing tests for toggle completion (both directions; fails on a text section; invalid position fails safely)
+- [x] 2.5 Write failing tests for delete + reorder (delete preserves order; move up/down; move-to-same is no-op; invalid position fails safely)
+- [x] 2.6 (covered by 2.2/2.3 — text sections replace the single note)
+- [x] 2.7 Write failing tests for the serialization round-trip (order/kind/text/done/depth preserved; malformed/empty bytes fail safely without throwing)
+- [x] 2.8 Implement `ScribeBlock` (Kind, Text, Done, Depth) and `ScribeDocument` (ordered blocks) with mutations returning success/failure
 - [x] 2.9 Implement the byte-array codec (serialize/try-deserialize) used by both persistence and networking
-- [x] 2.10 Run `dotnet test` — all Core tests pass
+- [x] 2.10 Run `dotnet test` — all Core tests pass (27)
 
 ## 3. Mod: assets & mod metadata
 
@@ -37,8 +40,8 @@
 
 ## 5. Mod: editor GUI
 
-- [ ] 5.1 Implement `GuiDialogScribeLectern` (a `GuiDialogBlockEntity`) showing the note text area and the task list
-- [ ] 5.2 Task list: each row has a complete-toggle, editable text, and delete; plus an "add task" control
+- [ ] 5.1 Implement `GuiDialogScribeLectern` (a `GuiDialogBlockEntity`) rendering the document's ordered blocks
+- [ ] 5.2 Each block row: task rows have a complete-toggle + editable text + delete; text-section rows have editable text + delete; plus "add task" / "add text section" controls and up/down reorder
 - [ ] 5.3 On save, send the edited document to the server over the channel; reflect the server-synced state on reopen
 
 ## 6. Build & release automation

@@ -18,22 +18,22 @@ The system SHALL let a player open the lectern's editing GUI by right-clicking t
 #### Scenario: Open by right-click
 
 - **WHEN** a player right-clicks a placed lectern
-- **THEN** the Scribe editing GUI opens showing that lectern's tasks and note
+- **THEN** the Scribe editing GUI opens showing that lectern's document (its tasks and text sections)
 
-### Requirement: Edit tasks and note through the GUI
+### Requirement: Edit the document through the GUI
 
-The system SHALL let the player add, rename, toggle-complete, and delete tasks, and edit
-the freeform note, from the lectern's GUI.
+The system SHALL let the player add tasks and text sections, edit block text, toggle task
+completion, delete blocks, and reorder blocks from the lectern's GUI.
 
 #### Scenario: Add and complete a task
 
 - **WHEN** the player adds a task "Build a forge" and then marks it complete in the GUI
 - **THEN** the lectern's document contains that task shown as completed
 
-#### Scenario: Edit the note
+#### Scenario: Add a text section
 
-- **WHEN** the player types a note and confirms/saves in the GUI
-- **THEN** the lectern's document stores that note text
+- **WHEN** the player adds a freeform text section and confirms/saves in the GUI
+- **THEN** the lectern's document stores that text section in order among the blocks
 
 ### Requirement: Server-authoritative persistence
 
@@ -43,12 +43,12 @@ survive a save/reload.
 
 #### Scenario: Edits persist across reload
 
-- **WHEN** a player edits a lectern's tasks and note, then the world is saved and reloaded
-- **THEN** reopening that lectern shows the same tasks and note
+- **WHEN** a player edits a lectern's blocks (tasks and text sections), then the world is saved and reloaded
+- **THEN** reopening that lectern shows the same blocks in the same order
 
 #### Scenario: Client edits are not trusted directly
 
-- **WHEN** the client GUI changes a task or note
+- **WHEN** the client GUI changes a block (a task or text section)
 - **THEN** the change is sent to the server and only takes lasting effect after the server applies it (a client that fails to reach the server does not permanently change the stored document)
 
 ### Requirement: One editor at a time
@@ -88,7 +88,7 @@ made by one player is seen by another who opens the same lectern.
 The system SHALL key each lectern's document to that block's position, so different
 lecterns hold different documents.
 
-#### Scenario: Separate lecterns hold separate notes
+#### Scenario: Separate lecterns hold separate documents
 
-- **WHEN** two lecterns are placed and each is given different tasks
-- **THEN** each lectern shows only its own tasks and note
+- **WHEN** two lecterns are placed and each is given different content
+- **THEN** each lectern shows only its own document

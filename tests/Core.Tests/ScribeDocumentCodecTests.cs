@@ -8,24 +8,23 @@ namespace Scribe.Core.Tests;
 public class ScribeDocumentCodecTests
 {
     [Fact]
-    public void RoundTrip_PreservesTasksOrderDoneFlagsAndNote()
+    public void RoundTrip_PreservesBlockOrderKindsTextAndDoneFlags()
     {
         var original = new ScribeDocument();
         original.AddTask("Find copper");
+        original.AddTextSection("Tin is rarer than copper.");
         original.AddTask("Find tin");
         original.AddTask("Build a forge");
-        original.ToggleTask(1); // mark the middle one done
-        original.SetNote("Tin is rarer than copper.");
+        original.ToggleTask(3); // mark "Build a forge" done
 
         byte[] bytes = ScribeDocumentCodec.Serialize(original);
         bool ok = ScribeDocumentCodec.TryDeserialize(bytes, out ScribeDocument? restored);
 
         Assert.True(ok);
         Assert.NotNull(restored);
-        Assert.Equal(original.Note, restored!.Note);
         Assert.Equal(
-            original.Tasks.Select(t => (t.Text, t.Done)),
-            restored.Tasks.Select(t => (t.Text, t.Done)));
+            original.Blocks.Select(b => (b.Kind, b.Text, b.Done, b.Depth)),
+            restored!.Blocks.Select(b => (b.Kind, b.Text, b.Done, b.Depth)));
     }
 
     [Fact]
@@ -38,8 +37,7 @@ public class ScribeDocumentCodecTests
 
         Assert.True(ok);
         Assert.NotNull(restored);
-        Assert.Empty(restored!.Tasks);
-        Assert.Equal("", restored.Note);
+        Assert.Empty(restored!.Blocks);
     }
 
     [Fact]

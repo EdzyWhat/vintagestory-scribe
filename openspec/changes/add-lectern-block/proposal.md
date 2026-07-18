@@ -32,9 +32,10 @@ by its position.
 
 ### New Capabilities
 
-- `task-note-document`: The game-agnostic model of a Scribe document — an ordered list of
-  tasks (text + done flag) plus a single freeform note — with the rules for mutating it
-  (add/rename/toggle/delete/reorder tasks, edit note) and serializing it to/from bytes.
+- `task-note-document`: The game-agnostic model of a Scribe document — an ordered sequence
+  of blocks, where each block is a task (text + done flag) or a freeform text section, with
+  a reserved depth for future nesting — plus the rules for mutating it (add task / add text
+  section, edit block text, toggle, delete, reorder) and serializing it to/from bytes.
   Lives in `Core`, no game references, fully unit-tested.
 - `lectern-block`: The in-game lectern block — placement, interaction (look+hotkey or
   right-click) to open a GUI, and server-authoritative persistence + multiplayer
