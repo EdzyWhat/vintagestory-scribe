@@ -83,6 +83,23 @@ tracking — rejected, not authoritative and breaks in multiplayer. Trade-off: a
 skips the close packet could leave a stale lock; mitigate by also clearing on disconnect and
 (optionally) when the holder moves out of range / the block unloads.
 
+**7. Interleave Atlas integration tests with implementation, not batch them at the end.**
+[Pixnop.Atlas.XUnit](https://github.com/Pixnop/Atlas) boots a real headless server inside
+`dotnet test`, so it can drive block-entity methods and network packets directly — it needs
+no GUI. Each server-side capability gets its Atlas test immediately after the task that
+implements it (persistence right after `BlockEntityScribeLectern`; the edit round-trip
+right after the network handler; the lock right after the lock itself), mirroring the
+test-first discipline already used for `Core`. *Why:* this is the only way to exercise
+persistence/networking/the lock with a real server *before* group 7's manual playtesting —
+without it, a bug in any of those three would only surface as a confusing symptom at the
+GUI layer, with no way to tell whether the bug is below the GUI or in it. *Alternative:* one
+batched "integration tests" pass after everything (including the GUI) is built — rejected;
+it defers feedback and mixes GUI bugs with server-logic bugs in the same debugging session.
+*Trade-off:* Atlas needs the local game install (`VINTAGE_STORY`), so this suite runs only
+locally, never on cloud CI (documented in task 4.7). **This interleaving is the intended
+pattern for every later tier**, not a one-off for the lectern — worth carrying forward as
+each tier's own design doc gets written.
+
 ## Risks / Trade-offs
 
 - **Silent-fail scenario formatting in specs** → validated with `openspec validate --strict`.
@@ -97,13 +114,12 @@ skips the close packet could leave a stale lock; mitigate by also clearing on di
 - **GUI scope creep** → v1 keeps the GUI minimal (flat task list + one note); categories,
   reordering UI, etc. are later tiers.
 
-## Open Questions
-
-- Exact vanilla lectern block/shape code to reuse (resolve in-game before authoring the
-  block JSON).
-
 ## Resolved
 
+- **Exact vanilla shape to reuse:** confirmed in-game and on disk — `game:clutter`, type
+  `bookshelves/lecturn-book-open` (plain wood, not the "aged" scavenged variant, since this
+  block is meant to be crafted). No texture override needed; the shape's own embedded
+  texture paths are literal and resolve on disk.
 - **Obtaining the block:** creative-inventory only for v1; a crafting recipe comes in a
   later change. (Faster to first playtest.)
 - **Opening:** right-click only (no look+hotkey).
