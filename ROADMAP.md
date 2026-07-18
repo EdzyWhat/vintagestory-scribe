@@ -43,5 +43,9 @@ age (the saw); anything past that is cosmetic.
 - Optional in-game settings panel (ConfigLib, soft dependency).
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
+- Cross-world export/import (JSON), à la Wanderer's Sketchbook / Frontier's Map.
+- Handbook/wiki authoring pass (guides players through the tiers; documents which features
+  live on which item/block). Spans all tiers; do near shipping.
+- Credit JeanPierre (Wanderer's Sketchbook) in CREDITS — we borrow its data model + GUI ideas.
 
 For the full design record and rationale, see the project plan.

@@ -41,8 +41,12 @@ section (freeform), interspersable and reorderable, with a reserved depth for fu
 ## 5. Mod: editor GUI
 
 - [ ] 5.1 Implement `GuiDialogScribeLectern` (a `GuiDialogBlockEntity`) rendering the document's ordered blocks
-- [ ] 5.2 Each block row: task rows have a complete-toggle + editable text + delete; text-section rows have editable text + delete; plus "add task" / "add text section" controls and up/down reorder
-- [ ] 5.3 On save, send the edited document to the server over the channel; reflect the server-synced state on reopen
+- [ ] 5.2 Each block row: task rows have a complete-toggle + editable text + delete; text-section rows have editable text + delete; plus "add task" / "add text section" controls
+- [ ] 5.3 Collapsible tool panel with a per-option **visibility-predicate hook** (the gating mechanism); wire NO real gates in v1 (all options visible)
+- [ ] 5.4 Reorder mode: toggle a mode that shows up/down controls per block, driving Core `MoveBlock`
+- [ ] 5.5 Text size control as a **client-side display preference** (scales GUI font; stored in local mod config, NOT in the document, NOT synced)
+- [ ] 5.6 Edit-mode toggle keybind: GUI opens in a resting state; pressing the key enters edit mode with an immersive "pull out the pen/stylus" beat
+- [ ] 5.7 On save, send the edited document to the server over the channel; reflect the server-synced state on reopen
 
 ## 6. Build & release automation
 

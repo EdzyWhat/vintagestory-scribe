@@ -35,6 +35,38 @@ completion, delete blocks, and reorder blocks from the lectern's GUI.
 - **WHEN** the player adds a freeform text section and confirms/saves in the GUI
 - **THEN** the lectern's document stores that text section in order among the blocks
 
+#### Scenario: Reorder blocks in the GUI
+
+- **WHEN** the player enters reorder mode and moves a block up or down
+- **THEN** the lectern's document reflects the new block order after saving
+
+### Requirement: Collapsible, gating-ready tool panel
+
+The GUI's tools/options SHALL live in a panel that can be collapsed/hidden, and each option
+SHALL support a visibility condition so future tiers can gate options by technology. In v1
+no options are gated (all are visible). Overall text size SHALL be adjustable as a
+client-side display preference that is NOT stored in the document and NOT synced to others.
+
+#### Scenario: Collapse the tool panel
+
+- **WHEN** the player collapses the tool panel
+- **THEN** the options are hidden and the document content remains visible
+
+#### Scenario: Text size is a local preference
+
+- **WHEN** one player changes the text size
+- **THEN** the change affects only that player's display and does not alter the stored document or other players' views
+
+### Requirement: Edit-mode toggle
+
+The GUI SHALL provide a keybind that toggles editing on and off, so the dialog can rest in
+a non-editing state until the player chooses to write (an immersive "take out the pen" beat).
+
+#### Scenario: Toggle into editing
+
+- **WHEN** the player presses the edit-toggle keybind while the lectern GUI is open and not editing
+- **THEN** editing controls become active for that player
+
 ### Requirement: Server-authoritative persistence
 
 The system SHALL treat the server as the source of truth for a lectern's document: edits
