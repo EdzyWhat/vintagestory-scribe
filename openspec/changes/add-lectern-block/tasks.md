@@ -1,10 +1,10 @@
 ## 1. Solution & project scaffolding
 
-- [ ] 1.1 Create the solution `Scribe.sln` and a `Directory.Build.props` setting `TargetFramework=net10.0`, `LangVersion=latest`, `Nullable=enable`
-- [ ] 1.2 Create `src/Core/Core.csproj` (a plain classlib, NO game references)
-- [ ] 1.3 Create `tests/Core.Tests/Core.Tests.csproj` (xUnit, references `Core`)
-- [ ] 1.4 Create `src/Mod/Mod.csproj` referencing `Core` and `VintagestoryAPI.dll` via `<HintPath>$(VINTAGE_STORY)/VintagestoryAPI.dll</HintPath>` (Private=false)
-- [ ] 1.5 Add all three projects to the solution; confirm `dotnet build src/Core` and `dotnet build tests/Core.Tests` succeed
+- [x] 1.1 Create the solution `Scribe.slnx` and a `Directory.Build.props` setting `TargetFramework=net10.0`, `LangVersion=latest`, `Nullable=enable` (+ `VintageStoryPath` fallback)
+- [x] 1.2 Create `src/Core/Core.csproj` (a plain classlib, NO game references)
+- [x] 1.3 Create `tests/Core.Tests/Core.Tests.csproj` (xUnit, references `Core`)
+- [x] 1.4 Create `src/Mod/Mod.csproj` referencing `Core` and `VintagestoryAPI.dll` via `<HintPath>$(VintageStoryPath)/VintagestoryAPI.dll</HintPath>` (Private=false)
+- [x] 1.5 Add all three projects to the solution; confirm Core, Core.Tests, AND Mod all build
 
 ## 2. Core: task-note document model (test-first)
 

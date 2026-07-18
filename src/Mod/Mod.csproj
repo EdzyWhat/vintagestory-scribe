@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Vintage Story code mod: a thin adapter mapping the game API onto Core.
+       References the game DLLs from the local install ($(VintageStoryPath), set in
+       Directory.Build.props). Private=false so we don't copy the game's own DLLs into
+       our build output. Shared build settings also come from Directory.Build.props. -->
+  <PropertyGroup>
+    <AssemblyName>Scribe</AssemblyName>
+    <RootNamespace>Scribe</RootNamespace>
+    <!-- The game loads the compiled DLL directly; no need to also produce a NuGet package. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="VintagestoryAPI">
+      <HintPath>$(VintageStoryPath)/VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="VintagestoryLib">
+      <HintPath>$(VintageStoryPath)/VintagestoryLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="protobuf-net">
+      <HintPath>$(VintageStoryPath)/Lib/protobuf-net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(VintageStoryPath)/Lib/Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

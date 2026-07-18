@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Game-agnostic library: models, rules, and serialization for Scribe documents.
+       MUST NOT reference the Vintage Story API, so it stays unit-testable without the game.
+       Shared settings (TargetFramework, Nullable, ImplicitUsings) come from Directory.Build.props. -->
+  <PropertyGroup>
+    <AssemblyName>Scribe.Core</AssemblyName>
+    <RootNamespace>Scribe.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

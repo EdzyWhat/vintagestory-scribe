@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- Shared settings for every project in the solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!--
+    Where the Vintage Story install lives, used by src/Mod to reference the game DLLs.
+    Prefer the VINTAGE_STORY environment variable; fall back to the default macOS
+    install path so the Mod project builds even when the variable isn't set.
+    Core and Core.Tests do NOT use this - they have no game references.
+  -->
+  <PropertyGroup>
+    <VintageStoryPath Condition="'$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
+    <VintageStoryPath Condition="'$(VintageStoryPath)' == ''">/Applications/Vintage Story.app</VintageStoryPath>
+  </PropertyGroup>
+
+</Project>
