@@ -91,12 +91,18 @@ directly they connect archaeology/history to actual gameplay (not just flavor):
   unbreakable lock. **Decided: pursue only if it's a cheap interop** with the existing
   **Envelopes** mod (github.com/SiiMeR/vs-envelopes); otherwise skip or build native later.
   Not urgent.
-- **Milestone-suggested tasks — decided, pursue.** When the player crosses a tech
-  milestone (e.g. first bronze smelt), surface **one single, easily-dismissed suggested
-  task** ("Build a proper forge") — never a queue, never a nag. Two candidate paths: (a) an
-  **optional soft dependency on the Achievements mod** (mods.vintagestory.at/achievements)
-  if it exposes a usable unlock signal (research in flight); (b) if not, Scribe **detects
-  vanilla tech milestones itself** from inventory/knowledge state, no dependency needed.
+- **Milestone-suggested tasks — decided: self-detect, no dependency.** When the player
+  crosses a tech milestone (e.g. first bronze smelt), surface **one single,
+  easily-dismissed suggested task** ("Build a proper forge") — never a queue, never a nag.
+  Researched and rejected three third-party trigger sources: **Achievements**
+  (mods.vintagestory.at/achievements) has no public API — only an undocumented internal
+  attribute found by decompiling its DLL, and a tiny (~2k) install base; **XSkills/XLib**
+  has a real API but skill-XP/ability-tiers are a poor fit for discrete milestones, and its
+  1.22.x support runs through a community fork-of-a-fork; **Survival Expanded**
+  (mods.vintagestory.at/survivalexpanded) is Achievements' own abandoned predecessor — a
+  dead end. **Scribe detects vanilla milestones itself** (first bronze/steel/fired-clay,
+  etc.) against first-party VS game events/inventory state — zero dependency, works for
+  every player. Either mod could later become optional *enrichment* (not the trigger).
   Later/park tier, not v1.
 - **Handbook bookmarking — decided, pursue long-term.** Bookmark a Survival Handbook entry
   into the notebook as a task ("craft this once I have iron"). Acknowledged as the deepest
