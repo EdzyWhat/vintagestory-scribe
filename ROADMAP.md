@@ -108,6 +108,20 @@ directly they connect archaeology/history to actual gameplay (not just flavor):
   into the notebook as a task ("craft this once I have iron"). Acknowledged as the deepest
   API integration on this list (needs Handbook page-ID access) — its own dedicated OpenSpec
   change well after the core tiers exist, not a near-term item.
+- **Slack push integration — decided, pursue, one-way only.** A hidden/advanced config
+  option to connect a task list to Slack, pushing task-change notifications out. **One-way
+  (Scribe → Slack) only** — bidirectional would require the mod to run as a Slack app
+  backend (OAuth install, event subscriptions, a public callback endpoint), a much bigger
+  lift for little payoff. Mechanism: **Slack Incoming Webhooks**
+  (https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) — the player
+  generates a webhook URL (via a Slack app with the `incoming-webhook` scope), pastes it
+  into config, and Scribe does a plain JSON `HTTP POST` on task changes. **The webhook URL
+  IS the secret** — no OAuth token handling needed, but it must never be logged or synced.
+  Known limits: destination channel/name/icon fixed at webhook creation (not per-message),
+  no delete-via-webhook, no published rate-limit number (debounce pushes, don't fire one
+  per keystroke). Framed as business/personal research (a hands-on excuse to learn the
+  Slack API) — keep it config-gated and undiscoverable by default, not a mainstream
+  feature. Later/park tier, not v1.
 - Lower-priority / needs more investigation: handwriting neatening with practice (skill
   curve), item aging/wear visuals.
 
