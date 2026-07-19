@@ -23,18 +23,15 @@ The system SHALL let a player open the lectern's editing GUI by right-clicking t
 
 ### Requirement: Edit the document through the GUI
 
-The system SHALL let the player add tasks and text sections, edit block text, toggle task
-completion, delete blocks, and reorder blocks from the lectern's GUI.
+The system SHALL let the player add tasks, edit block text, toggle task completion, delete
+blocks, and reorder blocks from the lectern's GUI. Text-section blocks are a document
+capability (see `task-note-document`) but the lectern's GUI does not expose a way to create
+one; text-section blocks created by another means still render, edit, and delete normally.
 
 #### Scenario: Add and complete a task
 
 - **WHEN** the player adds a task "Build a forge" and then marks it complete in the GUI
 - **THEN** the lectern's document contains that task shown as completed
-
-#### Scenario: Add a text section
-
-- **WHEN** the player adds a freeform text section and confirms/saves in the GUI
-- **THEN** the lectern's document stores that text section in order among the blocks
 
 #### Scenario: Reorder blocks in the GUI
 

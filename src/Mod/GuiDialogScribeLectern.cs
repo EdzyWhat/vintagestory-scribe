@@ -31,24 +31,37 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private bool isDirty;
     private long? autosaveTickListenerId;
 
-    private bool isReorderMode;
     private int? draggedBlockIndex;
     private int? hoverTargetIndex;
 
     private bool isToolPanelExpanded = true;
 
+    /// <summary>Row height used the last time <see cref="ComposeEditorView"/> laid out each note
+    /// row, keyed by block index -- lets <see cref="OnRowTextChanged"/> detect when a note has
+    /// wrapped to a different number of lines without re-measuring against a stale value, so it
+    /// only recomposes on an actual height change rather than on every keystroke.</summary>
+    private readonly System.Collections.Generic.Dictionary<int, double> composedNoteRowHeights = new();
+
     /// <summary>
-    /// One entry per tool-panel button. <c>IsVisible</c> is the gating hook for future
-    /// context-sensitive tools (e.g. hide "Reorder" below two rows) — v1 wires every option
-    /// visible unconditionally, per task 5.3.
+    /// One entry per tool-panel button. <c>Icon</c> is a built-in icon-font code (see
+    /// <c>Vintagestory.API.Client.IconUtil</c>) drawn on a small square button, with
+    /// <c>LangKey</c>'s text shown as a hover tooltip rather than a label — the built-in icon set
+    /// has no dedicated reorder/edit glyph, but a bare icon reads better at this size than a
+    /// truncated word. <c>IsVisible</c> is the gating hook for future context-sensitive tools
+    /// (e.g. hide "Reorder" below two rows) — v1 wires every option visible unconditionally, per
+    /// task 5.3.
     /// </summary>
-    private readonly record struct ToolbarOption(string Key, string LangKey, System.Func<bool> IsVisible, ActionConsumable OnActivate);
+    private readonly record struct ToolbarOption(string Key, string Icon, string LangKey, System.Func<bool> IsVisible, ActionConsumable OnActivate);
 
     public GuiDialogScribeLectern(ICoreClientAPI capi, BlockEntityScribeLectern lectern, bool isEditorMode, byte[]? documentBytes)
-        : base(Lang.Get("scribe-gui-title"), lectern.Pos, capi)
+        : base(Lang.Get("scribe:scribe-gui-title"), lectern.Pos, capi)
     {
         this.lectern = lectern;
         this.clientConfig = capi.LoadModConfig<ScribeClientConfig>(ScribeModSystem.ClientConfigFileName) ?? new ScribeClientConfig();
+
+        // Clamp a pre-existing saved value down to the current cap -- a config saved before
+        // MaxTextSizePercent was introduced (or before it was lowered) could exceed it.
+        clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, 0.5f, MaxTextSizePercent / 100f);
 
         if (IsDuplicate) return;
 
@@ -60,11 +73,25 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     private int TextSizePercent => (int)System.Math.Round(clientConfig.TextSizeScale * 100);
 
+    /// <summary>Upper bound for the text-size slider. There's no scrollable/clipped region in
+    /// this dialog -- rows are stacked by absolute Y with no scrollbar -- so past a certain
+    /// scale + block count, content renders below the screen with no way to reach it (confirmed
+    /// live at the slider's old 200% max). Capping here is a stopgap; real scrolling support is
+    /// tracked as a follow-up (tasks.md 8.14).</summary>
+    private const int MaxTextSizePercent = 150;
+
+    /// <summary>Set while a text-size drag is pending a recompose (see <see cref="OnMouseUp"/>).
+    /// Recomposing rebuilds the slider element from scratch, which would discard its own
+    /// in-progress-drag state (<c>GuiElementSlider</c> has no public way to defer its own change
+    /// callback to mouse-up, so this dialog does it instead) -- without deferring, every
+    /// intermediate value during a single drag tears down and rebuilds a fresh slider that never
+    /// saw the mouse-down, ending the drag after one step.</summary>
+    private bool textSizePendingRecompose;
+
     private bool OnTextSizeSliderChanged(int percent)
     {
         clientConfig.TextSizeScale = percent / 100f;
-        capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName);
-        ComposeEditorView();
+        textSizePendingRecompose = true;
         return true;
     }
 
@@ -82,7 +109,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         StopAutosaveTick();
         IsEditorMode = editorMode;
-        isReorderMode = false;
         draggedBlockIndex = null;
         hoverTargetIndex = null;
 
@@ -114,14 +140,20 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private ElementBounds DialogBounds() =>
         ElementStdBounds.AutosizedMainDialog.WithAlignment(EnumDialogArea.CenterMiddle);
 
+    /// <summary>Vertical gap between the title bar and the first row -- the title bar takes no
+    /// space of its own within <c>BeginChildElements</c>, so content starting at y=0 renders
+    /// flush against it. Shared by both views, so a single bump here fixes the gap everywhere
+    /// the row stack starts.</summary>
+    private const double TopContentGap = 20;
+
     // ---------------- Read view ----------------
 
     private void ComposeReadView()
     {
         var blocks = lectern.Document.Blocks;
-        double rowSpacing = 4;
-        double listWidth = 400;
-        double y = 0;
+        double rowSpacing = 6;
+        double listWidth = 480;
+        double y = TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
@@ -129,17 +161,18 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
             .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar(Lang.Get("scribe-gui-title"), OnTitleBarClose)
+            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
             .BeginChildElements(bgBounds);
 
         foreach (var block in blocks)
         {
-            double rowHeight = ScribeBlockRowCell.RowHeight(block);
-            var rowBounds = ElementBounds.Fixed(0, y, listWidth, rowHeight);
-
             string text = block.IsTask
                 ? (block.Done ? "[x] " : "[ ] ") + block.Text
                 : block.Text;
+
+            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
+            double rowHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), listWidth, minHeight);
+            var rowBounds = ElementBounds.Fixed(0, y, listWidth, rowHeight);
 
             SingleComposer.AddStaticText(text, RowFont(), rowBounds);
             y += rowHeight + rowSpacing;
@@ -147,12 +180,14 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         if (blocks.Count == 0)
         {
-            SingleComposer.AddStaticText(Lang.Get("scribe-gui-edit-hint"), RowFont(), ElementBounds.Fixed(0, y, listWidth, 30));
-            y += 30 + rowSpacing;
+            string hintText = Lang.Get("scribe:scribe-gui-edit-hint");
+            double hintHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, hintText, RowFont(), listWidth, 30);
+            SingleComposer.AddStaticText(hintText, RowFont(), ElementBounds.Fixed(0, y, listWidth, hintHeight));
+            y += hintHeight + rowSpacing;
         }
 
         var switchBounds = ElementBounds.Fixed(0, y, listWidth, 30);
-        SingleComposer.AddSmallButton(Lang.Get("scribe-gui-switch-to-editor"), OnClickSwitchToEditor, switchBounds, key: "switchModeButton");
+        SingleComposer.AddSmallButton(Lang.Get("scribe:scribe-gui-switch-to-editor"), OnClickSwitchToEditor, switchBounds, key: "switchModeButton");
 
         SingleComposer.EndChildElements().Compose();
     }
@@ -171,13 +206,15 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     // ---------------- Editor view ----------------
 
+    private const double EditorListWidth = 540;
+
     private void ComposeEditorView()
     {
         if (scratchDocument is null) return;
 
-        double rowSpacing = 4;
-        double listWidth = 460;
-        double y = 0;
+        double rowSpacing = 6;
+        double listWidth = EditorListWidth;
+        double y = TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
@@ -185,14 +222,32 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
             .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar(Lang.Get("scribe-gui-title"), OnTitleBarClose)
+            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
             .BeginChildElements(bgBounds);
 
         var blocks = scratchDocument.Blocks;
+        composedNoteRowHeights.Clear();
         for (int i = 0; i < blocks.Count; i++)
         {
             var block = blocks[i];
-            double rowHeight = ScribeBlockRowCell.RowHeight(block);
+            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
+
+            // Task rows (GuiElementTextInput) are single-line by design and never wrap, so the
+            // fixed height is correct as-is. Text-section rows (GuiElementTextArea) DO wrap and
+            // grow past this height the moment ApplyValues seeds their text below -- measure
+            // ahead so later rows lay out at the height the text area will actually end up
+            // being, not the pre-growth constant (confirmed live: an unmeasured long note
+            // overlaps "Text Size"/"Collapse" below it). Recorded per-index so OnRowTextChanged
+            // can tell whether a live edit has changed the wrapped height enough to need a
+            // recompose (see OnRowTextChanged).
+            double rowHeight = minHeight;
+            if (!block.IsTask)
+            {
+                double textWidth = ScribeBlockRowCell.TextWidth(listWidth, isTask: false, showDragHandle: true);
+                rowHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, block.Text, RowFont(), textWidth, minHeight);
+                composedNoteRowHeights[i] = rowHeight;
+            }
+
             var rowBounds = ElementBounds.Fixed(0, y, listWidth, rowHeight);
 
             ScribeBlockRowCell.Compose(
@@ -201,7 +256,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 i,
                 rowBounds,
                 RowFont(),
-                isReorderMode,
+                showDragHandle: true,
                 OnRowToggle,
                 OnRowTextChanged,
                 OnRowDelete,
@@ -211,42 +266,50 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             y += rowHeight + rowSpacing;
         }
 
-        var textSizeBounds = ElementBounds.Fixed(0, y, listWidth, 30);
-        SingleComposer.AddStaticText(Lang.Get("scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, 110, 30));
+        y += 6;
+        SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, 110, 30));
         SingleComposer.AddSlider(OnTextSizeSliderChanged, ElementBounds.Fixed(115, y, listWidth - 115, 30), key: "textSizeSlider");
-        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, 200, 10, "%");
-        y += 34;
+        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, MaxTextSizePercent, 10, "%");
+        y += 38;
 
-        double toolbarY = y;
-        string collapseLangKey = isToolPanelExpanded ? "scribe-gui-collapse" : "scribe-gui-expand";
-        SingleComposer.AddSmallButton(Lang.Get(collapseLangKey), OnClickToggleToolPanel, ElementBounds.Fixed(0, toolbarY, 110, 30), key: "toolPanelToggleButton");
-        y += 34;
+        var toolPanelToggleBounds = ElementBounds.Fixed(0, y, 140, 30);
+        string collapseLangKey = isToolPanelExpanded ? "scribe:scribe-gui-collapse" : "scribe:scribe-gui-expand";
+        SingleComposer.AddSmallButton(Lang.Get(collapseLangKey), OnClickToggleToolPanel, toolPanelToggleBounds, key: "toolPanelToggleButton");
+        y += 38;
 
         if (isToolPanelExpanded)
         {
             double optionX = 0;
             foreach (var option in ToolbarOptions())
             {
+                var optionBounds = ElementBounds.Fixed(optionX, y, 36, 32);
                 SingleComposer.AddIf(option.IsVisible());
-                SingleComposer.AddSmallButton(Lang.Get(option.LangKey), option.OnActivate, ElementBounds.Fixed(optionX, y, 110, 30), key: option.Key);
+                SingleComposer.AddIconButton(option.Icon, _ => option.OnActivate(), optionBounds, key: option.Key);
+                SingleComposer.AddHoverText(Lang.Get(option.LangKey), CairoFont.WhiteSmallText(), 150, optionBounds.FlatCopy());
                 SingleComposer.EndIf();
-                optionX += 115;
+                optionX += 42;
             }
 
-            y += 34;
+            y += 38;
         }
 
-        var switchBounds = ElementBounds.Fixed(0, y, listWidth, 30);
-        SingleComposer.AddSmallButton(Lang.Get("scribe-gui-switch-to-read"), OnClickSwitchToRead, switchBounds, key: "switchModeButton");
+        var switchBounds = ElementBounds.Fixed(0, y, 180, 30);
+        SingleComposer.AddSmallButton(Lang.Get("scribe:scribe-gui-switch-to-read"), OnClickSwitchToRead, switchBounds, key: "switchModeButton");
 
         SingleComposer.EndChildElements().Compose();
+
+        // Seed row values (toggle state, text) only after Compose() has calculated real bounds --
+        // see the doc comment on ScribeBlockRowCell.Compose for why doing this earlier corrupts
+        // the text elements' auto-height calc and, transitively, the whole dialog's outer size.
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            ScribeBlockRowCell.ApplyValues(SingleComposer, blocks[i], i);
+        }
     }
 
     private System.Collections.Generic.IEnumerable<ToolbarOption> ToolbarOptions()
     {
-        yield return new ToolbarOption("addTaskButton", "scribe-gui-addtask", () => true, OnClickAddTask);
-        yield return new ToolbarOption("addTextButton", "scribe-gui-addtext", () => true, OnClickAddText);
-        yield return new ToolbarOption("reorderButton", "scribe-gui-reorder", () => true, OnClickToggleReorder);
+        yield return new ToolbarOption("addTaskButton", "plus", "scribe:scribe-gui-addtask", () => true, OnClickAddTask);
     }
 
     private bool OnClickToggleToolPanel()
@@ -266,6 +329,72 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         scratchDocument?.SetBlockText(index, text);
         isDirty = true;
+
+        // Recompose immediately when a note's wrapped height has changed -- otherwise the
+        // textarea grows/shrinks its own box live (GuiElementTextArea.Autoheight) while every
+        // row below it stays put until the next unrelated recompose, visibly overlapping
+        // (confirmed live: screenshots/debug/2026-07-18_14-32-1[3-6]_editor-note-normalwords.png).
+        // Scoped to notes only, since a task's GuiElementTextInput never wraps/grows.
+        var block = scratchDocument?.Blocks[index];
+        if (block is null || block.IsTask) return;
+
+        double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
+        double textWidth = ScribeBlockRowCell.TextWidth(EditorListWidth, isTask: false, showDragHandle: true);
+        double newHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), textWidth, minHeight);
+
+        if (composedNoteRowHeights.TryGetValue(index, out double composedHeight) && newHeight != composedHeight)
+        {
+            RecomposeEditorViewPreservingFocus();
+        }
+    }
+
+    /// <summary>
+    /// Recomposes the editor view without disturbing whichever text row the player is actively
+    /// typing in -- a plain recompose (<c>GuiComposer.Compose()</c>, the default
+    /// <c>focusFirstElement: true</c>) yanks focus/caret to row 0's element, which would make it
+    /// impossible to keep typing past the point a note first wraps to a new line. Captures the
+    /// focused row's key and caret position beforehand and restores both on the freshly composed
+    /// element (a recompose creates brand-new <see cref="GuiElement"/> instances, so the old
+    /// reference cannot simply be refocused).
+    /// </summary>
+    private void RecomposeEditorViewPreservingFocus()
+    {
+        int? focusedIndex = null;
+        int caretPosInLine = 0;
+        int caretPosLine = 0;
+
+        var blocks = scratchDocument?.Blocks;
+        if (blocks is not null)
+        {
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                if (blocks[i].IsTask) continue;
+
+                var textArea = SingleComposer.GetTextArea(ScribeBlockRowCell.TextKey(i));
+                if (textArea is { HasFocus: true })
+                {
+                    focusedIndex = i;
+                    caretPosInLine = textArea.CaretPosInLine;
+                    caretPosLine = textArea.CaretPosLine;
+                    break;
+                }
+            }
+        }
+
+        ComposeEditorView();
+
+        if (focusedIndex is { } index)
+        {
+            var textArea = SingleComposer.GetTextArea(ScribeBlockRowCell.TextKey(index));
+            if (textArea is not null)
+            {
+                // FocusElement (not OnFocusGained directly) so the element-0 focus that
+                // Compose()'s default focusFirstElement:true already applied gets properly
+                // unfocused first -- otherwise two elements end up marked HasFocus at once.
+                SingleComposer.FocusElement(textArea.TabIndex);
+                textArea.SetCaretPos(caretPosInLine, caretPosLine);
+            }
+        }
     }
 
     private void OnRowDelete(int index)
@@ -277,25 +406,8 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     private bool OnClickAddTask()
     {
-        scratchDocument?.AddTask(Lang.Get("scribe-gui-newtask-placeholder"));
+        scratchDocument?.AddTask(Lang.Get("scribe:scribe-gui-newtask-placeholder"));
         isDirty = true;
-        ComposeEditorView();
-        return true;
-    }
-
-    private bool OnClickAddText()
-    {
-        scratchDocument?.AddTextSection("");
-        isDirty = true;
-        ComposeEditorView();
-        return true;
-    }
-
-    private bool OnClickToggleReorder()
-    {
-        isReorderMode = !isReorderMode;
-        draggedBlockIndex = null;
-        hoverTargetIndex = null;
         ComposeEditorView();
         return true;
     }
@@ -342,6 +454,14 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         base.OnMouseUp(args);
 
+        if (textSizePendingRecompose)
+        {
+            textSizePendingRecompose = false;
+            capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName);
+            ComposeEditorView();
+            return;
+        }
+
         if (draggedBlockIndex is null || scratchDocument is null)
         {
             draggedBlockIndex = null;
@@ -368,11 +488,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         if (scratchDocument is null || scratchDocument.Blocks.Count == 0) return 0;
 
         // Row keys are laid out in the same order as scratchDocument.Blocks; look up each
-        // row's live bounds by key rather than recomputing layout math here.
+        // row's live bounds by key rather than recomputing layout math here. Task rows key a
+        // GuiElementTextInput, text-section rows a GuiElementTextArea -- GetElement avoids
+        // assuming either kind (GetTextInput's cast throws on a text-section row).
         for (int i = 0; i < scratchDocument.Blocks.Count; i++)
         {
-            var textElem = SingleComposer.GetTextInput(ScribeBlockRowCell.TextKey(i));
-            var bounds = textElem?.Bounds;
+            var bounds = SingleComposer.GetElement(ScribeBlockRowCell.TextKey(i))?.Bounds;
             if (bounds is null) continue;
 
             double midY = bounds.absY + bounds.OuterHeight / 2;

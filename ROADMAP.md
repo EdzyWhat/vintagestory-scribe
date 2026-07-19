@@ -25,7 +25,18 @@ age (the saw); anything past that is cosmetic.
   checklist + short note, server-authoritative and multiplayer-safe. Goal: something
   playable to test. Built modularly so later tiers slot in without rework.
 - **v2 — Notebook (collection):** leather-bound held item, infinite pages. First held
-  artifact → introduces the `docId`-on-item store the clay tablet later reuses.
+  artifact → introduces the `docId`-on-item store the clay tablet later reuses. Two
+  decisions carried over from v1 exploration:
+  - **A real scrollable/clipped GUI region is a hard prerequisite, not a follow-up.**
+    `add-lectern-block` task 8.15 (rows stacked by absolute Y, no scrollbar, currently
+    just stopgapped via a text-size cap) must land before "infinite pages" can be an
+    honest claim — otherwise content silently renders off-screen past a certain length,
+    which is worse than v1's bounded-document problem.
+  - **The single-editor lock (server-tracked by block position) likely does not carry
+    over.** A held item has no fixed position, and only one player can ever hold a given
+    item stack at a time — the contention the lock exists to prevent may not apply to a
+    docId-keyed held document. Confirm this explicitly when scoping v2 rather than
+    copy-pasting the lock pattern out of habit.
 - **v3 — Clay tablet (scratch):** soft/unfired item, clay-color-tinted 3-line UI,
   clayform-a-flat-slab (no firing), stylus in offhand, wets out in water, storable in
   the vanilla Vertical Rack. Plain text entry for now.
@@ -43,6 +54,22 @@ age (the saw); anything past that is cosmetic.
 - Optional in-game settings panel (ConfigLib, soft dependency).
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
+- Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
+  reserved for a future item/recipe, not the lectern — the lectern's "Add Note" toolbar
+  button was removed deliberately (task 8.18 in `add-lectern-block`); the Core capability
+  and `ScribeBlockRowCell`'s rendering of text-section rows are kept fully working so that
+  future recipe can reuse them with no Core changes.
+- Replace the dynamically-sized GUI rows with a static-sized, skeuomorphic open-book UI
+  (fixed page layout, turn-page paging instead of a growing scroll list) -- see
+  https://mods.vintagestory.at/show/mod/42149 and similar mods for prior art.
+- Move the editor's option bar (text-size slider, collapse toggle, add-task/add-note, the
+  read/edit mode switch button) off the main content area entirely, into a side rail --
+  similar to how the vanilla Survival Handbook keeps its category tabs docked to the side of
+  the main content pane rather than stacked above/below it. Saves vertical space that
+  currently competes with the document's own rows, and groups all chrome in one place.
+- Fold the "Switch to Read/Edit" button into the collapse/expand toggle itself (or otherwise
+  merge them) to save a row of screen space, once the side-rail move above makes that layout
+  decision concrete.
 - Cross-world export/import (JSON), à la Wanderer's Sketchbook / Frontier's Map.
 - Handbook/wiki authoring pass (guides players through the tiers; documents which features
   live on which item/block). Spans all tiers; do near shipping.
@@ -104,6 +131,18 @@ directly they connect archaeology/history to actual gameplay (not just flavor):
   etc.) against first-party VS game events/inventory state — zero dependency, works for
   every player. Either mod could later become optional *enrichment* (not the trigger).
   Later/park tier, not v1.
+- **Writing desk as faction task-assignment, not just personal organization — needs research
+  before committing.** Idea: the v4 writing desk becomes a tool for a faction to assign tasks
+  to its members, not just a personal-notes consolidator; faction leaders could lock the
+  assignment feature so only they (not any member) can create/edit faction-wide tasks,
+  addressing the obvious griefing risk of any member being able to spam/delete others' tasks.
+  Pairs naturally with a "pin a task to your own lectern" feature, so a player's personal
+  lectern surfaces tasks the faction assigned them -- a real, distinctive throughline from
+  personal (lectern) to organizational (desk) tiers. Open question before scoping further:
+  vanilla Vintage Story has no first-party faction/guild system -- confirm whether this should
+  target an existing faction mod's data (dependency, like the Envelopes-interop idea above) or
+  be scoped down to "shared owner list" (a simpler, faction-system-agnostic group of player
+  UIDs) instead of true factions. Needs its own research pass before an OpenSpec change.
 - **Handbook bookmarking — decided, pursue long-term.** Bookmark a Survival Handbook entry
   into the notebook as a task ("craft this once I have iron"). Acknowledged as the deepest
   API integration on this list (needs Handbook page-ID access) — its own dedicated OpenSpec
