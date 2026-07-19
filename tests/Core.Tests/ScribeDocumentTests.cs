@@ -166,6 +166,50 @@ public class ScribeDocumentTests
         Assert.False(doc.ToggleTask(0));
     }
 
+    // --- Toggle pinned (tasks only) ---
+
+    [Fact]
+    public void TogglePinned_UnpinnedBecomesPinned()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTask("Build a forge");
+
+        Assert.True(doc.TogglePinned(0));
+        Assert.True(doc.Blocks[0].Pinned);
+    }
+
+    [Fact]
+    public void TogglePinned_PinnedBecomesUnpinned()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTask("Build a forge");
+        doc.TogglePinned(0);
+
+        doc.TogglePinned(0);
+
+        Assert.False(doc.Blocks[0].Pinned);
+    }
+
+    [Fact]
+    public void TogglePinned_OnTextSection_Fails()
+    {
+        var doc = new ScribeDocument();
+        doc.AddTextSection("not a task");
+
+        Assert.False(doc.TogglePinned(0));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(5)]
+    public void TogglePinned_OnInvalidIndex_FailsSafely(int badIndex)
+    {
+        var doc = new ScribeDocument();
+
+        Assert.False(doc.TogglePinned(badIndex));
+    }
+
     // --- Delete ---
 
     [Fact]

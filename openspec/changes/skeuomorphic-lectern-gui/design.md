@@ -100,6 +100,26 @@ with an added clip/scroll wrapper, rather than a redesign.
 decision; the layout-model cost is real and the reference mod's motivation (a drawing
 canvas needs one thing on screen at a time) doesn't apply to Scribe's list-based content.
 
+**Correction (confirmed live during implementation): `BeginClip`/`PushScissor` does not
+visually clip this row list — a viewport-culling mechanism is required instead.**
+Confirmed against real `vsapi` source (`GuiComposer.Render`): every static element
+(`AddInset` row dividers, `AddStaticText` read-view rows) is baked into one single
+always-unclipped texture blit that renders *before* any `GuiElementClip`'s scissor push
+ever runs. Separately, `GuiElementTextInput.RenderInteractiveElements` (task rows) issues
+its own `GlScissor` scoped to its own bounds, then unconditionally calls
+`GlScissorFlag(false)` afterward — canceling scissoring outright rather than restoring the
+outer `BeginClip` scissor. Net effect: the row list's clip region was never visually
+enforced; confirmed live via screenshot
+(`screenshots/debug/2026-07-18_20-43-11_hover-hide-behavior.png`) showing row dividers and
+row text bleeding through the "Text Size"/"Collapse" controls below the intended clip
+bounds once the document has enough rows to overflow. Mouse hit-testing is unaffected —
+`InsideClipBounds` propagation into `IsPositionInside` still makes hit-testing scroll-aware,
+confirmed separately from the rendering path. *Revised mechanism:* the row list must use
+viewport culling — only add/compose rows whose position falls within the current visible
+scrolled window, recomposing on scroll — rather than relying on the engine's scissor for
+visual correctness. `BeginClip`/`AddVerticalScrollbar` may still be used for the scrollbar
+control itself and its drag/value plumbing, just not trusted to clip rendered content.
+
 **5. Checkbox scaling: pass a computed `size` to `AddSwitch`, reusing the same scale
 factor `RowHeight` already applies — no new mechanism.**
 `GuiElementSwitch`'s constructor already accepts a `size` parameter (default 30,
@@ -193,6 +213,13 @@ compatibility actually matters.
   `GuiDialogTrader`'s scrollbar as the reference pattern) → check `VSAPI-NOTES.md` and
   `GuiDialogTrader` before inventing an approach; add findings to `VSAPI-NOTES.md` if any
   new gotchas surface, per that file's existing discipline.
+- **`BeginClip`/`PushScissor` does not visually clip this row list (CONFIRMED, see
+  Decision 4's correction)** → the row list needs a viewport-culling rewrite (only
+  add/compose rows within the visible scrolled window) before the "long document remains
+  fully reachable" spec scenario is actually satisfied; the original implementation only
+  achieved scroll-aware hit-testing, not scroll-aware rendering. `VSAPI-NOTES.md`'s "row
+  list needs to scroll" entry overclaims visual clipping and needs a correction alongside
+  the code fix (tracked in `tasks.md`, not this design doc).
 - **Codec version bump breaks pre-release saved documents (BREAKING, accepted per
   Decision 8)** → any lectern document saved under the current version fails to
   deserialize after this change ships; not a corruption risk (the codec fails safe), but

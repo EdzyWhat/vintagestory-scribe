@@ -9,14 +9,15 @@ namespace Scribe.Core;
 ///
 /// Format (little-endian via <see cref="BinaryWriter"/>):
 ///   [4 bytes magic "SCRB"][1 byte version][int blockCount]
-///   [per block: byte kind, bool done, int depth, string text]
+///   [per block: byte kind, bool done, int depth, bool pinned, bool hasAssignedToUid,
+///    string assignedToUid (only if hasAssignedToUid), string text]
 /// A hand-rolled format keeps Core free of any external dependency. The version byte lets
 /// us evolve the format later while still reading older saves.
 /// </summary>
 public static class ScribeDocumentCodec
 {
     private static readonly byte[] Magic = "SCRB"u8.ToArray();
-    private const byte Version = 2; // v1 was flat tasks + a single note; v2 is ordered blocks.
+    private const byte Version = 3; // v1 was flat tasks + a single note; v2 is ordered blocks; v3 adds Pinned/AssignedToUid.
 
     public static byte[] Serialize(ScribeDocument doc)
     {
@@ -31,6 +32,9 @@ public static class ScribeDocumentCodec
                 w.Write((byte)block.Kind);
                 w.Write(block.Done);
                 w.Write(block.Depth);
+                w.Write(block.Pinned);
+                w.Write(block.AssignedToUid is not null);
+                if (block.AssignedToUid is not null) w.Write(block.AssignedToUid);
                 w.Write(block.Text);
             }
         }
@@ -62,8 +66,11 @@ public static class ScribeDocumentCodec
                 var kind = (ScribeBlockKind)r.ReadByte();
                 bool done = r.ReadBoolean();
                 int depth = r.ReadInt32();
+                bool pinned = r.ReadBoolean();
+                bool hasAssignedToUid = r.ReadBoolean();
+                string? assignedToUid = hasAssignedToUid ? r.ReadString() : null;
                 string text = r.ReadString();
-                blocks.Add(new ScribeBlock(kind, text, done, depth));
+                blocks.Add(new ScribeBlock(kind, text, done, depth, pinned, assignedToUid));
             }
 
             var doc = new ScribeDocument();

@@ -33,12 +33,22 @@ public sealed class ScribeBlock
     /// <summary>Indent/nesting level. Reserved for future hierarchy; always 0 for now.</summary>
     public int Depth { get; set; }
 
-    public ScribeBlock(ScribeBlockKind kind, string text, bool done = false, int depth = 0)
+    /// <summary>Pinned-to-HUD flag. Only meaningful when <see cref="Kind"/> is Task. v1 only
+    /// stores/toggles this; on-screen HUD rendering is a future tier's job.</summary>
+    public bool Pinned { get; set; }
+
+    /// <summary>Reserved for a future assignment capability (player/group UID). Unset by
+    /// default; no mutation method exists yet and nothing in this codebase reads it.</summary>
+    public string? AssignedToUid { get; set; }
+
+    public ScribeBlock(ScribeBlockKind kind, string text, bool done = false, int depth = 0, bool pinned = false, string? assignedToUid = null)
     {
         Kind = kind;
         Text = text;
         Done = done;
         Depth = depth;
+        Pinned = pinned;
+        AssignedToUid = assignedToUid;
     }
 
     public bool IsTask => Kind == ScribeBlockKind.Task;

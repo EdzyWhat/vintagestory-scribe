@@ -59,6 +59,16 @@ public sealed class ScribeDocument
         return true;
     }
 
+    /// <summary>Flips the pinned flag of a Task block. Fails on a Text section or bad index.</summary>
+    public bool TogglePinned(int index)
+    {
+        if (!IsValidIndex(index)) return false;
+        var block = _blocks[index];
+        if (!block.IsTask) return false;
+        block.Pinned = !block.Pinned;
+        return true;
+    }
+
     /// <summary>Removes the block at <paramref name="index"/>, preserving the order of the rest.</summary>
     public bool DeleteBlock(int index)
     {

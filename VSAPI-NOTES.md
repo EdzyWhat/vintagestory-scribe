@@ -99,6 +99,89 @@ state). Prefer a throttled hover-position log (`OnMouseMove`, logged via
 target and the chat log visible in the same frame — gives an unambiguous side-by-side
 without repeated clicking.
 
+**Symptom: a row list needs to scroll instead of running off the bottom of a fixed-height
+dialog, or growing the dialog itself without bound.**
+
+`GuiComposer` has a built-in clip+scroll idiom, confirmed against the real
+`anegostudios/vsapi`/`vssurvivalmod` source (`GuiDialogTrader.cs`,
+`GuiDialogBlockEntityInventory.cs`), not just decompiled: `BeginClip(clipBounds)` pushes a
+`GuiElementClip` that calls `api.Render.PushScissor(Bounds)` and sets
+`composer.InsideClipBounds = clipBounds`; every element added afterward
+(`AddInteractiveElement`/`AddStaticElement`) inherits that as its own `InsideClipBounds`.
+`EndClip()` pops the scissor and clears it. A `AddVerticalScrollbar(onNewValue, bounds,
+key)` + `.GetScrollbar(key).SetHeights(visibleHeight, totalHeight)` (called *after* the
+composer's own `.Compose()`, once the real content height is known) drives a callback that
+sets the *content* bounds' `fixedY = 0 - value; fixedY.CalcWorldBounds()` — shifting every
+child's `absY` in one call, since `CalcWorldBounds()` recurses into `ChildBounds`.
+
+Mouse hit-testing is scroll-aware **for free**: `GuiElement.IsPositionInside` ANDs
+`Bounds.PointInside` with `InsideClipBounds.PointInside`, and any hit-test that reads a live
+`Bounds.absY` (rather than recomputing layout math independently) picks up the scroll shift
+automatically, since `absY` is recalculated by the same `CalcWorldBounds()` call the scroll
+callback triggers. No manual scroll-offset arithmetic needed in hit-test code.
+
+**Correction (this entry originally overclaimed): `BeginClip`/`PushScissor` alone does
+NOT visually clip a mixed static+interactive row list's rendering — it only sets up the
+plumbing `IsPositionInside` reads for hit-testing.** Confirmed live during
+`skeuomorphic-lectern-gui` playtesting (a document with enough rows to overflow visibly
+bled its dividers/text through the controls below the clip region —
+`screenshots/debug/2026-07-18_20-43-11_hover-hide-behavior.png`), then confirmed the
+mechanism against real vsapi source: `GuiComposer.Render()` draws every *static* element
+(e.g. `AddInset` dividers, `AddStaticText` rows) in one single always-unclipped texture
+blit, generated at the very top of `Render()` before any `GuiElementClip`'s
+`RenderInteractiveElements` (which is where the scissor push actually happens) ever runs.
+Separately, `GuiElementTextInput.RenderInteractiveElements` (a task row's own text box)
+issues its own `api.Render.GlScissor(...)` scoped to its own bounds, then unconditionally
+calls `GlScissorFlag(false)` afterward — which cancels scissoring outright rather than
+restoring whatever outer scissor `BeginClip` had pushed. Vanilla's own reference usages
+(`GuiDialogTrader`'s item-slot-grid scrollbar, `GuiDialogBlockEntityInventory`'s) get away
+with this because a slot grid is a single well-behaved interactive element with no static
+children and no scissor-canceling side effects — they never hit either failure mode.
+
+**Fix pattern:** don't trust `BeginClip`/`PushScissor` to hide overflow for a row list that
+mixes static elements (dividers, read-view text) with `GuiElementTextInput`/
+`GuiElementTextArea` rows. Viewport-cull instead: measure every row's position/height in a
+first pass, then only actually add/compose (`AddStaticText`/`ScribeBlockRowCell.Compose`)
+the rows whose measured range overlaps the current scrolled viewport (plus a small buffer,
+so minor scroll movement doesn't force a recompose on every tick) in a second pass. Still
+use `BeginClip`/`AddVerticalScrollbar` for the scrollbar control itself and for hit-testing
+scroll-awareness (both of those parts of this entry's original finding hold) — just don't
+rely on the clip to hide rows outside the buffered window; visibility comes from never
+composing them, not from the engine hiding them after the fact. See
+`GuiDialogScribeLectern.ComposeReadView`/`ComposeEditorView`'s two-pass measure/cull
+structure, `RowListCullBuffer`, and `OnRowListScroll`.
+
+---
+
+**Gotcha (engine inconsistency, not yet hit but worth flagging): `GuiElementTextArea`'s own
+wrap-height write skips a GUIScale division that `GuiElementDynamicText`/
+`GuiElementTextBase` both apply for the same operation.** `GuiElementTextArea.TextChanged()`
+assigns the wrap-height straight to `Bounds.fixedHeight` (no `/ RuntimeEnv.GUIScale`), but
+`GuiElementDynamicText.AutoHeight()` / `GuiElementTextBase.GetMultilineTextHeight()` both
+divide by `RuntimeEnv.GUIScale` for the equivalent calculation.
+`ScribeBlockRowCell.MeasureWrappedHeight` correctly mirrors the `TextArea` convention (no
+division) since our text-section rows use `GuiElementTextArea` — but a future "fix" to make
+it consistent with the other convention would silently double effective row height at any
+non-1.0 GUIScale. If a similar height-measurement helper is ever added for a
+`GuiElementDynamicText`-backed element, don't copy `MeasureWrappedHeight`'s no-division
+convention without checking which base class is actually involved.
+
+**Symptom: a toggle/icon-button's `On` state, seeded to reflect persisted model state,
+silently reverts right after any mouse-up elsewhere in the dialog -- not just clicks on
+the button itself.**
+
+`GuiElementToggleButton.OnMouseUp` (the base of `AddIconButton`'s icon-button widget)
+unconditionally runs `if (!Toggleable) On = false;` -- and this override fires on *every*
+`OnMouseUp` dispatched to the dialog, not gated by whether the click landed on this
+specific button. `Toggleable` defaults to `false` in the constructor if not explicitly
+passed `true`. So any icon button meant to visually persist an on/off model state (not
+just a momentary fire-once action like a delete button) needs `toggleable: true` at
+construction, or its seeded `On` value gets wiped on the very next unrelated click.
+
+**Fix pattern:** pass `toggleable: true` for any icon button whose `On` represents real
+persisted state; leave it `false` only for momentary actions with no state to preserve.
+See `ScribeHoverIconButton`'s constructor doc comment in `ScribeBlockRowCell.cs`.
+
 ## Localization (`Lang`)
 
 **Symptom: every player-facing string renders as its own raw lang key (e.g.

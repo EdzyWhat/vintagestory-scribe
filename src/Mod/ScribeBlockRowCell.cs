@@ -33,6 +33,46 @@ public sealed class ScribeDragHandleElement : GuiElementStaticText
 }
 
 /// <summary>
+/// An icon button that only renders while the mouse is over a given hover region (typically
+/// the whole row, not just this icon's own small bounds) -- used for the delete/pin icons so
+/// they stay hidden until the player's mouse is somewhere over that row (design.md decision
+/// 6). Overrides <see cref="RenderInteractiveElements"/> to skip drawing entirely when the
+/// mouse isn't over <see cref="HoverRegion"/>, mirroring the technique
+/// <c>GuiElementDialogTitleBar.RenderInteractiveElements</c> already uses for its own
+/// close/menu-icon hover-glow (checking live mouse position every frame, confirmed via
+/// decompile) -- but hiding the whole icon rather than just adding a glow on top of it, and a
+/// caller-supplied region rather than the element's own (much smaller) bounds. This is a
+/// render-time check, not a composer <c>AddIf</c>/recompose: the icon element itself still
+/// exists and can still be clicked/handle mouse events normally, it just isn't drawn most
+/// frames -- no recompose means no focus/caret reset risk (see the same concern already
+/// solved for note-height changes via <c>RecomposeEditorViewPreservingFocus</c>).
+/// </summary>
+public sealed class ScribeHoverIconButton : GuiElementToggleButton
+{
+    /// <summary>The bounds to test the mouse against -- the whole row, not this icon's own
+    /// small click target.</summary>
+    public ElementBounds? HoverRegion;
+
+    /// <summary><paramref name="toggleable"/> must be <c>true</c> for any icon whose <c>On</c>
+    /// state represents persisted model state (e.g. the pin icon's <c>block.Pinned</c>):
+    /// the base class's <c>OnMouseUp</c> unconditionally resets <c>On = false</c> whenever
+    /// <c>Toggleable</c> is <c>false</c> (confirmed via decompile), which would silently wipe
+    /// a just-seeded pinned-state on the very next mouse-up anywhere in the dialog, not only
+    /// clicks on this icon. A momentary fire-once icon with no state to preserve (e.g.
+    /// delete) should keep this <c>false</c>.</summary>
+    public ScribeHoverIconButton(ICoreClientAPI capi, string icon, System.Action<bool> onToggle, ElementBounds bounds, bool toggleable = false)
+        : base(capi, icon, "", CairoFont.WhiteDetailText(), onToggle, bounds, toggleable)
+    {
+    }
+
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        if (HoverRegion is not null && !HoverRegion.PointInside(api.Input.MouseX, api.Input.MouseY)) return;
+        base.RenderInteractiveElements(deltaTime);
+    }
+}
+
+/// <summary>
 /// Composes one editable row (a task or a text section) directly onto a <see cref="GuiComposer"/>.
 ///
 /// This is NOT an <see cref="IGuiElementCell"/>/<c>AddCellList</c> row: that list widget only
@@ -52,6 +92,7 @@ public static class ScribeBlockRowCell
     private const double ToggleWidth = 28;
     private const double DeleteWidth = 32;
     private const double DragHandleWidth = 24;
+    private const double PinWidth = 32;
 
     /// <summary>Row height scales with <paramref name="textSizeScale"/> so a row can always fit
     /// its text at the current font size -- the text input/text area elements size themselves
@@ -61,12 +102,20 @@ public static class ScribeBlockRowCell
 
     /// <summary>The text element's own width within a row of <paramref name="rowWidth"/> --
     /// the same math <see cref="Compose"/> uses internally, exposed so callers can measure
-    /// wrapped text height against the real width before laying out the row.</summary>
-    public static double TextWidth(double rowWidth, bool isTask, bool showDragHandle)
+    /// wrapped text height against the real width before laying out the row.
+    /// <paramref name="textSizeScale"/> must match whatever scale <see cref="Compose"/> is
+    /// called with for the same row, since the reserved toggle-column width scales with it
+    /// (see <see cref="Compose"/>'s checkbox-scaling comment) -- passing a mismatched scale
+    /// would reserve too little/much space and either clip the checkbox or overlap the text.
+    /// Task rows also reserve a pin-icon column (<see cref="PinWidth"/>) alongside the delete
+    /// icon -- text sections get neither the toggle nor the pin column, mirroring pin's
+    /// task-only restriction (design.md decision 7).</summary>
+    public static double TextWidth(double rowWidth, bool isTask, bool showDragHandle, double textSizeScale = 1.0)
     {
         double dragHandleWidth = showDragHandle ? DragHandleWidth : 0;
-        double toggleWidth = isTask ? ToggleWidth : 0;
-        return rowWidth - dragHandleWidth - toggleWidth - DeleteWidth;
+        double toggleWidth = isTask ? ToggleWidth * textSizeScale : 0;
+        double pinWidth = isTask ? PinWidth : 0;
+        return rowWidth - dragHandleWidth - toggleWidth - pinWidth - DeleteWidth;
     }
 
     /// <summary>Measures how tall <paramref name="text"/> actually renders when wrapped to
@@ -82,6 +131,7 @@ public static class ScribeBlockRowCell
     public static string TextKey(int index) => $"scribeRow{index}Text";
     public static string DeleteKey(int index) => $"scribeRow{index}Delete";
     public static string DragHandleKey(int index) => $"scribeRow{index}DragHandle";
+    public static string PinKey(int index) => $"scribeRow{index}Pin";
 
     /// <summary>
     /// Composes the row at <paramref name="index"/> within <paramref name="rowBounds"/>
@@ -107,8 +157,18 @@ public static class ScribeBlockRowCell
         System.Action<int, string> onTextChanged,
         System.Action<int> onDelete,
         System.Action<int, MouseEvent>? onDragMouseDown = null,
-        System.Action<int, MouseEvent>? onDragMouseUp = null)
+        System.Action<int, MouseEvent>? onDragMouseUp = null,
+        double textSizeScale = 1.0,
+        System.Action<int>? onTogglePin = null)
     {
+        // rowBounds is used throughout this method purely as a position/size source (its
+        // fixedX/Y/Width/Height feed every sub-element's own bounds) -- it is never itself
+        // added to the composer as an element's bounds, so without this it would never be
+        // visited by CalcWorldBounds() and its absX/absY (needed below as ScribeHoverIconButton's
+        // HoverRegion) would stay uninitialized. Parenting it under the same parent as every
+        // other element in this row makes CalcWorldBounds() compute it for free.
+        composer.CurParentBounds.WithChild(rowBounds);
+
         double x = rowBounds.fixedX;
         double dragHandleWidth = showDragHandle ? DragHandleWidth : 0;
 
@@ -124,15 +184,22 @@ public static class ScribeBlockRowCell
             x += DragHandleWidth;
         }
 
-        double toggleWidth = block.IsTask ? ToggleWidth : 0;
+        // GuiElementSwitch's constructor unconditionally overwrites bounds.fixedWidth/Height
+        // to its own `size` param (confirmed via decompile,
+        // /private/tmp/switch_decompile/...GuiElementSwitch.decompiled.cs) -- passing the
+        // bounds' own (fixed 28px) width/height does nothing; `size:` is the only knob that
+        // actually controls rendered size. Scaling it by textSizeScale keeps the checkbox in
+        // step with the row's text/height (design.md decision 5) instead of staying a
+        // constant pixel size while everything around it grows/shrinks.
+        double toggleWidth = block.IsTask ? ToggleWidth * textSizeScale : 0;
         if (block.IsTask)
         {
             var toggleBounds = ElementBounds.Fixed(x, rowBounds.fixedY, ToggleWidth, rowBounds.fixedHeight);
-            composer.AddSwitch(on => onToggle(index), toggleBounds, ToggleKey(index));
-            x += ToggleWidth;
+            composer.AddSwitch(on => onToggle(index), toggleBounds, ToggleKey(index), size: toggleWidth);
+            x += toggleWidth;
         }
 
-        double textWidth = TextWidth(rowBounds.fixedWidth, block.IsTask, showDragHandle);
+        double textWidth = TextWidth(rowBounds.fixedWidth, block.IsTask, showDragHandle, textSizeScale);
         var textBounds = ElementBounds.Fixed(x, rowBounds.fixedY, textWidth, rowBounds.fixedHeight);
 
         if (block.IsTask)
@@ -145,8 +212,29 @@ public static class ScribeBlockRowCell
         }
 
         x += textWidth;
+
+        // Pin is task-only, same restriction as Done/the checkbox column above -- text
+        // sections get no pin affordance at all (design.md decision 7; TextWidth already
+        // reserves zero width for this column on a non-task row, so no bounds/space is
+        // wasted either).
+        if (block.IsTask)
+        {
+            var pinBounds = ElementBounds.Fixed(x, rowBounds.fixedY, PinWidth, rowBounds.fixedHeight);
+            var pinButton = new ScribeHoverIconButton(composer.Api, "wpCircle", _ => onTogglePin?.Invoke(index), pinBounds, toggleable: true)
+            {
+                HoverRegion = rowBounds,
+            };
+            composer.AddInteractiveElement(pinButton, PinKey(index));
+            composer.AddHoverText(Lang.Get("scribe:scribe-gui-pin"), CairoFont.WhiteSmallText(), 150, pinBounds.FlatCopy());
+            x += PinWidth;
+        }
+
         var deleteBounds = ElementBounds.Fixed(x, rowBounds.fixedY, DeleteWidth, rowBounds.fixedHeight);
-        composer.AddIconButton("eraser", _ => onDelete(index), deleteBounds, key: DeleteKey(index));
+        var deleteButton = new ScribeHoverIconButton(composer.Api, "eraser", _ => onDelete(index), deleteBounds)
+        {
+            HoverRegion = rowBounds,
+        };
+        composer.AddInteractiveElement(deleteButton, DeleteKey(index));
         composer.AddHoverText(Lang.Get("scribe:scribe-gui-delete"), CairoFont.WhiteSmallText(), 150, deleteBounds.FlatCopy());
     }
 
@@ -161,6 +249,7 @@ public static class ScribeBlockRowCell
         {
             composer.GetSwitch(ToggleKey(index)).On = block.Done;
             composer.GetTextInput(TextKey(index)).SetValue(block.Text);
+            composer.GetToggleButton(PinKey(index)).On = block.Pinned;
         }
         else
         {

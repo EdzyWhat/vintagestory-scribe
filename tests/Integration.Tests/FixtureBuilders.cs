@@ -31,6 +31,7 @@ public class FixtureBuilders : AtlasScenarioBase
         doc.AddTask("Find copper");
         doc.AddTextSection("Left the mine at day 3");
         doc.ToggleTask(0);
+        doc.TogglePinned(0);
         lectern.ApplyEdit(player.Player, ScribeDocumentCodec.Serialize(doc));
 
         await World.Ticks(2);

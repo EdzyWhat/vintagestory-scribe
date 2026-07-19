@@ -73,12 +73,84 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     private int TextSizePercent => (int)System.Math.Round(clientConfig.TextSizeScale * 100);
 
-    /// <summary>Upper bound for the text-size slider. There's no scrollable/clipped region in
-    /// this dialog -- rows are stacked by absolute Y with no scrollbar -- so past a certain
-    /// scale + block count, content renders below the screen with no way to reach it (confirmed
-    /// live at the slider's old 200% max). Capping here is a stopgap; real scrolling support is
-    /// tracked as a follow-up (tasks.md 8.14).</summary>
-    private const int MaxTextSizePercent = 150;
+    /// <summary>Upper bound for the text-size slider. Raised now that the row list scrolls
+    /// within a fixed-height clipped region (see <see cref="VisibleListHeight"/>) -- the
+    /// original overflow-off-screen problem this guarded against is handled by scrolling
+    /// instead, so this is now a looser sanity bound rather than a tight stopgap.</summary>
+    private const int MaxTextSizePercent = 300;
+
+    /// <summary>Fixed viewport height (unscaled) for the scrollable row-list region, shared by
+    /// both views. Provisional -- the portrait reshape (tasks.md group 4) will revisit this
+    /// alongside the dialog's overall dimensions.</summary>
+    private const double VisibleListHeight = 400;
+
+    /// <summary>The row list's content bounds (the single element every row is parented under)
+    /// for whichever view is currently composed -- <see cref="OnRowListScroll"/> shifts this on
+    /// scroll. Re-set at the top of each ComposeXxxView call; only one view is ever live at a
+    /// time so one field suffices.</summary>
+    private ElementBounds? rowListContentBounds;
+
+    /// <summary>The row list's current scroll offset, in the same units <c>AddVerticalScrollbar</c>
+    /// reports. Read by ComposeReadView/ComposeEditorView at the start of every compose (not just
+    /// the first) so a culling-triggered recompose (see <see cref="OnRowListScroll"/>) preserves
+    /// scroll position instead of snapping back to the top. Reset to 0 in <see cref="EnterMode"/>
+    /// since opening a dialog or switching view mode should start scrolled to the top.</summary>
+    private double rowListScrollValue;
+
+    /// <summary>The pixel Y-range (in row-list content coordinates) for which rows are currently
+    /// composed -- set at the end of each ComposeXxxView call from the same buffered window used
+    /// to decide which rows to add. <see cref="OnRowListScroll"/> only recomposes once the live
+    /// scroll viewport escapes this range.</summary>
+    private double rowListComposedRangeTop;
+    private double rowListComposedRangeBottom;
+
+    /// <summary>The contiguous block-index range actually composed (added to the composer) on the
+    /// last ComposeEditorView pass -- both -1 if none (e.g. an empty document). Rows outside this
+    /// range have no live elements, so <c>ApplyValues</c> and <c>HitTestRowIndex</c>'s fallback
+    /// must not assume every block index has one.</summary>
+    private int rowListComposedFirstIndex = -1;
+    private int rowListComposedLastIndex = -1;
+
+    /// <summary>Suppresses <see cref="OnRowListScroll"/>'s recompose-triggering logic while a
+    /// ComposeXxxView call is already in progress. <c>AddVerticalScrollbar(...).SetHeights(...)</c>
+    /// always fires this callback synchronously with a freshly-constructed scrollbar's value (0),
+    /// regardless of the real scroll position being restored right after -- without this guard,
+    /// that transient 0 would immediately trigger a second, unnecessary (and endlessly
+    /// re-entrant, since the recursive compose call would trigger it again) recompose.</summary>
+    private bool isComposingRowList;
+
+    /// <summary>How far beyond the visible viewport, in each direction, rows stay composed once
+    /// added. MUST be 0 -- a nonzero buffer was tried first and rejected: any row inside the
+    /// buffer zone still renders at its true, unclipped position with nothing else stopping it
+    /// (rows are viewport-culled rather than relying on <c>BeginClip</c>/<c>PushScissor</c> to
+    /// visually hide overflow -- confirmed against real vsapi source that the engine's scissor
+    /// does not clip this row list's rendering at all; see design.md's Decision 4 correction).
+    /// With any buffer greater than zero, a buffered-but-off-screen row renders wherever its
+    /// computed position lands, independent of the dialog's own drawn background box -- confirmed
+    /// live: <c>screenshots/debug/2026-07-18_22-20-31_scroll-retest.png</c> shows a row rendering
+    /// past "Done Editing", directly on top of the world behind the dialog. Zero is the only value
+    /// that actually guarantees "nothing renders outside the box" -- accept the tradeoff that
+    /// every scroll tick (not just each time the visible set changes) triggers a recompose; this
+    /// dialog already recomposes on other frequent interactions (toggle, delete, drag-reorder)
+    /// with no observed cost.</summary>
+    private const double RowListCullBuffer = 0;
+
+    private void OnRowListScroll(float value)
+    {
+        if (rowListContentBounds is null || isComposingRowList) return;
+
+        rowListScrollValue = value;
+        rowListContentBounds.fixedY = 0 - value;
+        rowListContentBounds.CalcWorldBounds();
+
+        double viewportTop = value;
+        double viewportBottom = value + VisibleListHeight;
+        if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
+        {
+            if (IsEditorMode) RecomposeEditorViewPreservingFocus();
+            else ComposeReadView();
+        }
+    }
 
     /// <summary>Set while a text-size drag is pending a recompose (see <see cref="OnMouseUp"/>).
     /// Recomposing rebuilds the slider element from scratch, which would discard its own
@@ -111,6 +183,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         IsEditorMode = editorMode;
         draggedBlockIndex = null;
         hoverTargetIndex = null;
+        rowListScrollValue = 0;
 
         if (editorMode)
         {
@@ -140,56 +213,168 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private ElementBounds DialogBounds() =>
         ElementStdBounds.AutosizedMainDialog.WithAlignment(EnumDialogArea.CenterMiddle);
 
+    /// <summary>Placeholder skeuomorphic backdrop, replacing the generic
+    /// <c>AddShadedDialogBG</c> panel (design.md decision 2/3). A single texture path is the
+    /// entire swap point -- replacing this asset with real per-tier art (or repointing it to
+    /// a different <see cref="AssetLocation"/> per tier later) needs no change to this file's
+    /// layout/composition logic, satisfying `specs/lectern-gui-shell/spec.md`'s "Backdrop is
+    /// swappable" scenario. Uses the engine's own <c>AddImageBG</c> (a tiled/scaled Cairo
+    /// `SurfacePattern` fill with rounded corners, confirmed via
+    /// `GuiElementImageBackground.ComposeElements`) rather than a hand-rolled Cairo draw --
+    /// same swappability, less code.</summary>
+    private static readonly AssetLocation BackdropTexture = new("scribe:textures/gui/lecternbackdrop.png");
+
     /// <summary>Vertical gap between the title bar and the first row -- the title bar takes no
     /// space of its own within <c>BeginChildElements</c>, so content starting at y=0 renders
     /// flush against it. Shared by both views, so a single bump here fixes the gap everywhere
     /// the row stack starts.</summary>
     private const double TopContentGap = 20;
 
+    /// <summary>Vertical gap between rows in the scrollable list, shared by both views.
+    /// Widened from the original tight 6px stacking toward the Slack reference's airier
+    /// spacing (design.md's row-list restyle goal); a thin divider is centered in this gap
+    /// via <see cref="AddRowDivider"/>.</summary>
+    private const double RowSpacing = 14;
+
+    /// <summary>Adds a subtle horizontal divider centered in the gap below a row, using the
+    /// engine's own embossed-inset primitive (<c>AddInset</c>) rather than a hand-rolled Cairo
+    /// draw -- a thin (2px) inset reads as a faint separator line, matching the Slack
+    /// reference's light row dividers without inventing new rendering code.</summary>
+    private void AddRowDivider(double y, double width)
+    {
+        var dividerBounds = ElementBounds.Fixed(0, y + RowSpacing / 2 - 1, width, 2);
+        SingleComposer.AddInset(dividerBounds, depth: 1, brightness: 0.85f);
+    }
+
     // ---------------- Read view ----------------
+
+    /// <summary>Read-view row-list width. Narrowed from the original wide (480px) layout as
+    /// part of the portrait reshape -- paired with <see cref="VisibleListHeight"/>'s fixed
+    /// height, this makes the dialog read as taller-than-wide ("phone held vertically") per
+    /// design.md decision 1, rather than the original short/wide panel.</summary>
+    private const double ReadListWidth = 300;
 
     private void ComposeReadView()
     {
         var blocks = lectern.Document.Blocks;
-        double rowSpacing = 6;
-        double listWidth = 480;
+        double rowSpacing = RowSpacing;
+        double listWidth = ReadListWidth;
         double y = TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = Vintagestory.API.Client.ElementSizing.FitToChildren;
 
-        SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
-            .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
-            .BeginChildElements(bgBounds);
-
-        foreach (var block in blocks)
+        // Pass 1: measure every row's position/height, regardless of scroll position -- needed
+        // for the real total content height (for the scrollbar) and to know each row's y before
+        // deciding, below, which ones actually fall within the culled viewport window. This is
+        // the same per-row measurement work the old single-pass version already did; splitting it
+        // out doesn't add cost, it just runs before the compose pass instead of interleaved with it.
+        var rowYs = new double[blocks.Count];
+        var rowHeights = new double[blocks.Count];
+        double contentY = 0;
+        for (int i = 0; i < blocks.Count; i++)
         {
+            var block = blocks[i];
             string text = block.IsTask
                 ? (block.Done ? "[x] " : "[ ] ") + block.Text
                 : block.Text;
 
             double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
-            double rowHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), listWidth, minHeight);
-            var rowBounds = ElementBounds.Fixed(0, y, listWidth, rowHeight);
+            rowYs[i] = contentY;
+            rowHeights[i] = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), listWidth, minHeight);
+            contentY += rowHeights[i] + rowSpacing;
+        }
+
+        double hintHeight = 0;
+        if (blocks.Count == 0)
+        {
+            hintHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, Lang.Get("scribe:scribe-gui-edit-hint"), RowFont(), listWidth, 30);
+            contentY = hintHeight + rowSpacing;
+        }
+
+        // Clamp against the just-measured real content height before computing the culled
+        // window below, so a document that shrank (e.g. rows deleted) while scrolled down
+        // doesn't request a window past the end of the new, shorter content.
+        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - VisibleListHeight));
+        double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
+        double windowBottom = rowListScrollValue + VisibleListHeight + RowListCullBuffer;
+
+        // The row list lives inside a fixed-height clipped region so a long document scrolls
+        // instead of growing the dialog (and, before this, running off the bottom of the
+        // screen) -- see VSAPI-NOTES.md for the BeginClip/AddVerticalScrollbar idiom this
+        // follows (confirmed against GuiDialogTrader/GuiDialogBlockEntityInventory's own
+        // usage). rowListContentBounds is the single element every row/hint text is parented
+        // under; OnRowListScroll shifts its fixedY on scroll -- InsideClipBounds propagation
+        // (set automatically by BeginClip for every element added inside it, confirmed via
+        // decompile) makes mouse hit-testing scroll-aware for free, no manual offset math.
+        // BeginClip/PushScissor does NOT, however, visually clip this row list's rendering (see
+        // RowListCullBuffer's doc comment) -- pass 2 below only adds rows within the buffered
+        // window instead of relying on the engine's scissor to hide the rest.
+        var clipBounds = ElementBounds.Fixed(0, y, listWidth, VisibleListHeight);
+        var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
+        var contentBounds = ElementBounds.Fixed(0, 0, listWidth, contentY);
+
+        SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
+            .AddImageBG(bgBounds, BackdropTexture)
+            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
+            .BeginChildElements(bgBounds)
+            .BeginClip(clipBounds)
+                .BeginChildElements(contentBounds);
+
+        // Pass 2: only add rows (and their dividers) whose measured position overlaps the
+        // buffered window -- this is the actual culling; everything outside is never composed at
+        // all rather than composed-and-hidden.
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            double rowTop = rowYs[i];
+            double rowBottom = rowTop + rowHeights[i];
+            if (rowBottom < windowTop || rowTop > windowBottom) continue;
+
+            var block = blocks[i];
+            string text = block.IsTask
+                ? (block.Done ? "[x] " : "[ ] ") + block.Text
+                : block.Text;
+            var rowBounds = ElementBounds.Fixed(0, rowTop, listWidth, rowHeights[i]);
 
             SingleComposer.AddStaticText(text, RowFont(), rowBounds);
-            y += rowHeight + rowSpacing;
+            if (i < blocks.Count - 1) AddRowDivider(rowBottom, listWidth);
         }
 
         if (blocks.Count == 0)
         {
-            string hintText = Lang.Get("scribe:scribe-gui-edit-hint");
-            double hintHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, hintText, RowFont(), listWidth, 30);
-            SingleComposer.AddStaticText(hintText, RowFont(), ElementBounds.Fixed(0, y, listWidth, hintHeight));
-            y += hintHeight + rowSpacing;
+            SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-edit-hint"), RowFont(), ElementBounds.Fixed(0, 0, listWidth, hintHeight));
         }
+
+        rowListContentBounds = contentBounds;
+        rowListComposedRangeTop = windowTop;
+        rowListComposedRangeBottom = windowBottom;
+
+        SingleComposer
+                .EndChildElements()
+            .EndClip()
+            .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
+
+        y += VisibleListHeight + rowSpacing;
 
         var switchBounds = ElementBounds.Fixed(0, y, listWidth, 30);
         SingleComposer.AddSmallButton(Lang.Get("scribe:scribe-gui-switch-to-editor"), OnClickSwitchToEditor, switchBounds, key: "switchModeButton");
 
         SingleComposer.EndChildElements().Compose();
+
+        // SetHeights synchronously fires OnRowListScroll(0) via the scrollbar's own
+        // change-notify plumbing (GuiElementScrollbar.SetNewTotalHeight -> TriggerChanged),
+        // regardless of the real scroll position -- isComposingRowList suppresses that spurious
+        // call so it can't snap the list back to the top or trigger a re-entrant recompose. The
+        // real scroll position is reapplied right after via CurrentYPosition's public setter
+        // (no callback re-entrancy) and contentBounds' own fixedY.
+        isComposingRowList = true;
+        var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
+        scrollbar.SetHeights((float)VisibleListHeight, (float)System.Math.Max(VisibleListHeight, contentY));
+        scrollbar.CurrentYPosition = (float)rowListScrollValue;
+        contentBounds.fixedY = 0 - rowListScrollValue;
+        contentBounds.CalcWorldBounds();
+        isComposingRowList = false;
     }
 
     private bool OnClickSwitchToEditor()
@@ -206,13 +391,18 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     // ---------------- Editor view ----------------
 
-    private const double EditorListWidth = 540;
+    /// <summary>Editor-view row-list width. Narrowed from the original wide (540px) layout as
+    /// part of the portrait reshape -- see <see cref="ReadListWidth"/>'s doc comment for why.
+    /// Slightly wider than the read view to leave room for the drag handle/checkbox/delete
+    /// icon gutters `ScribeBlockRowCell` reserves that the read view's plain static text
+    /// doesn't need.</summary>
+    private const double EditorListWidth = 340;
 
     private void ComposeEditorView()
     {
         if (scratchDocument is null) return;
 
-        double rowSpacing = 6;
+        double rowSpacing = RowSpacing;
         double listWidth = EditorListWidth;
         double y = TopContentGap;
 
@@ -220,13 +410,19 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = Vintagestory.API.Client.ElementSizing.FitToChildren;
 
-        SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
-            .AddShadedDialogBG(bgBounds)
-            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
-            .BeginChildElements(bgBounds);
-
+        // See the matching comment in ComposeReadView for the clip/scrollbar idiom, and for why
+        // BeginClip/PushScissor doesn't visually clip this list on its own (RowListCullBuffer's
+        // doc comment) -- same two-pass measure-then-cull structure here, just with
+        // ScribeBlockRowCell.Compose's multi-element rows instead of a single AddStaticText per
+        // row.
         var blocks = scratchDocument.Blocks;
         composedNoteRowHeights.Clear();
+
+        // Pass 1: measure every row's position/height regardless of scroll position -- same
+        // reasoning as ComposeReadView's pass 1.
+        var rowYs = new double[blocks.Count];
+        var rowHeights = new double[blocks.Count];
+        double contentY = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
             var block = blocks[i];
@@ -239,7 +435,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             // being, not the pre-growth constant (confirmed live: an unmeasured long note
             // overlaps "Text Size"/"Collapse" below it). Recorded per-index so OnRowTextChanged
             // can tell whether a live edit has changed the wrapped height enough to need a
-            // recompose (see OnRowTextChanged).
+            // recompose (see OnRowTextChanged). Recorded for every row regardless of whether
+            // pass 2 below actually composes it, so a note scrolled out of view still reports
+            // its real height if scrolled back into view without an intervening edit.
             double rowHeight = minHeight;
             if (!block.IsTask)
             {
@@ -248,11 +446,43 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 composedNoteRowHeights[i] = rowHeight;
             }
 
-            var rowBounds = ElementBounds.Fixed(0, y, listWidth, rowHeight);
+            rowYs[i] = contentY;
+            rowHeights[i] = rowHeight;
+            contentY += rowHeight + rowSpacing;
+        }
+
+        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - VisibleListHeight));
+        double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
+        double windowBottom = rowListScrollValue + VisibleListHeight + RowListCullBuffer;
+
+        var clipBounds = ElementBounds.Fixed(0, y, listWidth, VisibleListHeight);
+        var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
+        var contentBounds = ElementBounds.Fixed(0, 0, listWidth, contentY);
+
+        SingleComposer = capi.Gui.CreateCompo("scribeLectern", dialogBounds)
+            .AddImageBG(bgBounds, BackdropTexture)
+            .AddDialogTitleBar(Lang.Get("scribe:scribe-gui-title"), OnTitleBarClose)
+            .BeginChildElements(bgBounds)
+            .BeginClip(clipBounds)
+                .BeginChildElements(contentBounds);
+
+        // Pass 2: only compose rows (and their dividers) whose measured position overlaps the
+        // buffered window. rowListComposedFirstIndex/LastIndex record the actual composed range
+        // so ApplyValues (below) and HitTestRowIndex (drag-reorder) know which indices have live
+        // elements -- an index outside this range was never added to the composer this pass.
+        rowListComposedFirstIndex = -1;
+        rowListComposedLastIndex = -1;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            double rowTop = rowYs[i];
+            double rowBottom = rowTop + rowHeights[i];
+            if (rowBottom < windowTop || rowTop > windowBottom) continue;
+
+            var rowBounds = ElementBounds.Fixed(0, rowTop, listWidth, rowHeights[i]);
 
             ScribeBlockRowCell.Compose(
                 SingleComposer,
-                block,
+                blocks[i],
                 i,
                 rowBounds,
                 RowFont(),
@@ -261,12 +491,26 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 OnRowTextChanged,
                 OnRowDelete,
                 OnRowDragMouseDown,
-                OnRowDragMouseUp);
+                OnRowDragMouseUp,
+                textSizeScale: clientConfig.TextSizeScale,
+                onTogglePin: OnRowTogglePin);
 
-            y += rowHeight + rowSpacing;
+            if (i < blocks.Count - 1) AddRowDivider(rowBottom, listWidth);
+
+            if (rowListComposedFirstIndex == -1) rowListComposedFirstIndex = i;
+            rowListComposedLastIndex = i;
         }
 
-        y += 6;
+        rowListContentBounds = contentBounds;
+        rowListComposedRangeTop = windowTop;
+        rowListComposedRangeBottom = windowBottom;
+
+        SingleComposer
+                .EndChildElements()
+            .EndClip()
+            .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
+
+        y += VisibleListHeight + 6;
         SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, 110, 30));
         SingleComposer.AddSlider(OnTextSizeSliderChanged, ElementBounds.Fixed(115, y, listWidth - 115, 30), key: "textSizeSlider");
         SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, MaxTextSizePercent, 10, "%");
@@ -298,10 +542,24 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SingleComposer.EndChildElements().Compose();
 
+        // See the matching comment in ComposeReadView for why isComposingRowList/
+        // CurrentYPosition/contentBounds.fixedY are set this way rather than a plain SetHeights
+        // call.
+        isComposingRowList = true;
+        var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
+        scrollbar.SetHeights((float)VisibleListHeight, (float)System.Math.Max(VisibleListHeight, contentY));
+        scrollbar.CurrentYPosition = (float)rowListScrollValue;
+        contentBounds.fixedY = 0 - rowListScrollValue;
+        contentBounds.CalcWorldBounds();
+        isComposingRowList = false;
+
         // Seed row values (toggle state, text) only after Compose() has calculated real bounds --
         // see the doc comment on ScribeBlockRowCell.Compose for why doing this earlier corrupts
         // the text elements' auto-height calc and, transitively, the whole dialog's outer size.
-        for (int i = 0; i < blocks.Count; i++)
+        // Only rows actually composed this pass (rowListComposedFirstIndex..LastIndex) have live
+        // elements to seed -- a culled-out index has none, and ApplyValues would throw on a
+        // GetTextInput/GetTextArea call against a missing key.
+        for (int i = rowListComposedFirstIndex; i != -1 && i <= rowListComposedLastIndex; i++)
         {
             ScribeBlockRowCell.ApplyValues(SingleComposer, blocks[i], i);
         }
@@ -322,6 +580,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private void OnRowToggle(int index)
     {
         scratchDocument?.ToggleTask(index);
+        isDirty = true;
+    }
+
+    private void OnRowTogglePin(int index)
+    {
+        scratchDocument?.TogglePinned(index);
         isDirty = true;
     }
 
@@ -502,7 +766,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // Row keys are laid out in the same order as scratchDocument.Blocks; look up each
         // row's live bounds by key rather than recomputing layout math here. Task rows key a
         // GuiElementTextInput, text-section rows a GuiElementTextArea -- GetElement avoids
-        // assuming either kind (GetTextInput's cast throws on a text-section row).
+        // assuming either kind (GetTextInput's cast throws on a text-section row). A
+        // viewport-culled-out row has no element under its key at all (see
+        // rowListComposedFirstIndex/LastIndex), which this loop already tolerates via the
+        // null-bounds `continue` below -- it was originally written for "not yet Compose()'d
+        // this frame", but the same check happens to cover "culled out entirely" too.
         for (int i = 0; i < scratchDocument.Blocks.Count; i++)
         {
             var bounds = SingleComposer.GetElement(ScribeBlockRowCell.TextKey(i))?.Bounds;
@@ -512,7 +780,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             if (mouseY < midY) return i;
         }
 
-        return scratchDocument.Blocks.Count - 1;
+        // Falls through when the mouse is below every composed row's midpoint -- e.g. dragging
+        // past the bottom of the currently-culled window. rowListComposedLastIndex (the last
+        // index that actually has live elements this pass) is the correct target, not
+        // Blocks.Count - 1: with culling, the last block may not be the last *composed* row.
+        return rowListComposedLastIndex != -1 ? rowListComposedLastIndex : 0;
     }
 
     // ---------------- Autosave (throttled) ----------------

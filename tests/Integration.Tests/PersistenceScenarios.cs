@@ -31,6 +31,7 @@ public class PersistenceScenarios : AtlasScenarioBase
         Assert.Equal(2, blocks.Count);
         Assert.Equal("Find copper", blocks[0].Text);
         Assert.True(blocks[0].Done);
+        Assert.True(blocks[0].Pinned);
         Assert.Equal("Left the mine at day 3", blocks[1].Text);
     }
 }

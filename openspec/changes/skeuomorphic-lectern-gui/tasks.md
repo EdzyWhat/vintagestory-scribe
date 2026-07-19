@@ -4,146 +4,261 @@
 `reduce-agent-overhead`'s code-hygiene tasks have both landed since this change was
 proposed — no longer blocked. Still worth a fresh look since the files changed:
 
-- [ ] 1.1 Confirm `src/Mod/GuiDialogScribeLectern.cs`, `src/Mod/ScribeBlockRowCell.cs`,
+- [x] 1.1 Confirm `src/Mod/GuiDialogScribeLectern.cs`, `src/Mod/ScribeBlockRowCell.cs`,
       and `src/Core/ScribeBlock.cs`/`ScribeDocument.cs`/`ScribeDocumentCodec.cs` have no
       uncommitted changes in this or any other worktree before proceeding.
-- [ ] 1.2 Re-read the current state of all files above (they changed since this change
+- [x] 1.2 Re-read the current state of all files above (they changed since this change
       was proposed) before making any edits, so task descriptions below are applied
       against current code, not a stale mental model.
 
 ## 2. Core: pin flag, reserved assignment field, codec version bump
 
-- [ ] 2.1 Add `Pinned` (bool, default false) and `AssignedToUid` (nullable string,
+- [x] 2.1 Add `Pinned` (bool, default false) and `AssignedToUid` (nullable string,
       default null) to `ScribeBlock`. Both are per-block fields, not a side table (design.md
       decision 7). Update its constructor and any existing call sites that construct one
       positionally.
-- [ ] 2.2 Add `ScribeDocument.TogglePinned(int index)`, mirroring `ToggleTask`'s shape and
+- [x] 2.2 Add `ScribeDocument.TogglePinned(int index)`, mirroring `ToggleTask`'s shape and
       task-only restriction (fails on a text-section block or an out-of-range index,
       never throws). No mutation method for `AssignedToUid` yet — it stays reserved/unset
       until the future Desk work defines real semantics.
-- [ ] 2.3 Bump `ScribeDocumentCodec.Version` and serialize/deserialize the two new fields.
+- [x] 2.3 Bump `ScribeDocumentCodec.Version` and serialize/deserialize the two new fields.
       No backward-compat parse path for the old version (design.md decision 8, explicitly
       accepted) — a version mismatch continues to fail safe via the existing
       magic/version check, it just now also rejects the previous version's bytes.
-- [ ] 2.4 Add `Core.Tests` coverage: `TogglePinned` (toggle on/off, fails on a text
+- [x] 2.4 Add `Core.Tests` coverage: `TogglePinned` (toggle on/off, fails on a text
       section, fails on an out-of-range index) and a codec round-trip test asserting
       `Pinned`/`AssignedToUid` survive serialize→deserialize (including a null
       `AssignedToUid`).
-- [ ] 2.5 `dotnet test tests/Core.Tests/Core.Tests.csproj` — confirm all tests pass,
-      including the new ones.
+- [x] 2.5 `dotnet test tests/Core.Tests/Core.Tests.csproj` — confirm all tests pass,
+      including the new ones. (35/35 passing.)
+- [x] 2.6 The codec version bump (2.3) breaks `tests/Integration.Tests/fixtures/lectern.vcdbs`
+      (built under v2) — confirmed empirically: `PersistenceScenarios` failed with 0 blocks
+      instead of 2 after the bump, since `TryDeserialize` correctly rejects the old-version
+      bytes (this is the accepted breaking-change behavior from design.md decision 8, now
+      proven by the integration suite rather than assumed). Regenerated via
+      `atlas fixture ... --scenario BuildsLecternWithDocumentFixture --out
+      tests/Integration.Tests/fixtures/lectern.vcdbs --force` per README's documented
+      workflow. `dotnet test tests/Integration.Tests --filter "FullyQualifiedName!~FixtureBuilders"`
+      — 10/10 passing again.
 
 ## 3. Scrollable/clipped content region (resolves `add-lectern-block` task 8.15)
 
-- [ ] 3.1 Investigate `GuiComposer`'s clipped-region support, starting from
+- [x] 3.1 Investigate `GuiComposer`'s clipped-region support, starting from
       `GuiDialogTrader`'s scrollbar usage (already referenced in
       `ScribeBlockRowCell`'s class doc comment) and `VSAPI-NOTES.md`. Decompile only if
       the wiki/shipped-mod-source don't answer it, per existing project discipline — add
-      any new finding to `VSAPI-NOTES.md`.
-- [ ] 3.2 Add a scrollable/clipped region wrapping the row list in both
+      any new finding to `VSAPI-NOTES.md`. (Confirmed against real upstream
+      `anegostudios/vsapi`/`vssurvivalmod` source: `BeginClip`/`InsideClipBounds`
+      propagation genuinely makes mouse hit-testing scroll-aware, but does NOT clip
+      *rendering* for a mixed static+interactive row list — see design.md's Decision 4
+      correction and task 3.2a. `VSAPI-NOTES.md`'s "row list needs to scroll" entry has
+      been corrected accordingly.)
+- [x] 3.2 Add a scrollable/clipped region wrapping the row list in both
       `ComposeReadView` and `ComposeEditorView`, replacing the current unclipped
-      absolute-Y stacking.
-- [ ] 3.3 Confirm drag-reorder (`OnMouseMove`/`OnMouseUp`/`HitTestRowIndex`) still works
+      absolute-Y stacking. (`BeginClip`/`BeginChildElements(contentBounds)`/
+      `EndChildElements`/`EndClip`/`AddVerticalScrollbar` + `OnRowListScroll` +
+      `rowListContentBounds` provide the scrollbar control/value plumbing; actual visual
+      hiding of off-screen rows comes from 3.2a's viewport culling, not from the clip
+      itself.)
+- [x] 3.2a Rework the row list to viewport-cull instead of relying on the engine's
+      scissor for visual correctness: only add/compose rows (and their dividers) whose
+      position falls within the current visible scrolled window, recomposing on scroll
+      rather than assuming `BeginClip` hides the rest. (Two-pass measure/cull structure
+      in both `ComposeReadView`/`ComposeEditorView`: pass 1 measures every row's
+      position/height; pass 2 only composes rows overlapping
+      `[scrollValue - RowListCullBuffer, scrollValue + VisibleListHeight +
+      RowListCullBuffer]`. `OnRowListScroll` only triggers a recompose once the live
+      scroll position escapes the last-composed range, not on every scroll tick/drag
+      pixel — editor-view recomposes go through `RecomposeEditorViewPreservingFocus` so
+      scrolling while typing doesn't reset focus/caret. `isComposingRowList` suppresses
+      the scrollbar's own synchronous `SetHeights`-triggered callback (which always
+      reports 0 on a freshly constructed scrollbar) so restoring the real scroll position
+      right after doesn't re-enter/snap to top. `HitTestRowIndex`'s end-of-list fallback
+      now uses the last actually-composed index, not `Blocks.Count - 1`, since with
+      culling those can differ. `ApplyValues` only seeds rows in the composed range, since
+      a culled-out index has no live element to seed. `VSAPI-NOTES.md`'s "row list needs
+      to scroll" entry corrected to document this.
+
+      **Correction after a first live retest still showed bleed-through** (a row rendered
+      past "Done Editing", directly on the world behind the dialog — user caught this,
+      correctly diagnosed it as "just don't draw anything outside a bounding box" being
+      the missing piece):`RowListCullBuffer` was initially set to a full viewport height
+      to throttle recompose frequency, but ANY nonzero buffer means a buffered-but-
+      off-screen row is still fully composed and rendered at its true position, with
+      nothing constraining it to the dialog's own drawn area — the whole point of
+      culling is that an uncomposed row can't render anywhere, and a buffer directly
+      undermines that. Set to `0`: only rows genuinely within the visible scrolled window
+      are ever composed. Accepted tradeoff: recomposes on every scroll tick rather than
+      only when the visible set changes — judged acceptable since this dialog already
+      recomposes on other frequent interactions with no observed cost. Verified: clean
+      build, 35/35 Core.Tests, 12/12 Atlas Integration.Tests all still pass — this is a
+      client-GUI-only change with no server-observable behavior, so neither suite
+      exercises the fix directly; live in-game re-verification of the actual
+      overflow/scroll behavior (with the zero-buffer version) is 3.5's job.)
+- [x] 3.3 Confirm drag-reorder (`OnMouseMove`/`OnMouseUp`/`HitTestRowIndex`) still works
       correctly when the row list is scrolled away from its top position — hit-testing
-      must account for scroll offset.
-- [ ] 3.4 Revisit `MaxTextSizePercent` (currently 150, capped as a stopgap for the missing
+      must account for scroll offset. (`HitTestRowIndex` already reads live
+      `bounds.absY`, which `CalcWorldBounds()` recalculates on every scroll — confirmed
+      by code inspection that no offset math is needed; live drag-while-scrolled retest
+      still pending in 3.5/9.3.)
+- [x] 3.4 Revisit `MaxTextSizePercent` (currently 150, capped as a stopgap for the missing
       scroll region) now that overflow is handled by scrolling — raise or remove the cap
       per design.md's note that the original constraint no longer applies. Confirm with
       the user before removing it outright if any doubt remains about other reasons for
-      the cap.
+      the cap. (Raised to 300 as a looser sanity bound rather than removed outright.)
 - [ ] 3.5 Manually test: create a document with enough rows to overflow the visible
       dialog height; confirm every row is reachable by scrolling, in both read and editor
       view.
 
 ## 4. Portrait reshape
 
-- [ ] 4.1 Pick concrete portrait `ElementBounds` dimensions (design.md leaves exact pixel
-      dimensions as an open question) and update `DialogBounds()`.
-- [ ] 4.2 Update `EditorListWidth` and the read view's `listWidth` to the new, narrower
-      portrait column width.
-- [ ] 4.3 Re-check `ScribeBlockRowCell.TextWidth`/`MeasureWrappedHeight` call sites for any
-      layout assumptions tied to the old wide dimensions.
+- [x] 4.1 Pick concrete portrait `ElementBounds` dimensions (design.md leaves exact pixel
+      dimensions as an open question) and update `DialogBounds()`. (`DialogBounds()` uses
+      `ElementStdBounds.AutosizedMainDialog`, which auto-fits to children -- narrowing the
+      row-list width (4.2) combined with the fixed `VisibleListHeight` from group 3 is
+      sufficient to make the dialog read taller-than-wide; no direct edit to
+      `DialogBounds()` itself was needed.)
+- [x] 4.2 Update `EditorListWidth` and the read view's `listWidth` to the new, narrower
+      portrait column width. (`ReadListWidth = 300`, `EditorListWidth = 340` -- down from
+      480/540.)
+- [x] 4.3 Re-check `ScribeBlockRowCell.TextWidth`/`MeasureWrappedHeight` call sites for any
+      layout assumptions tied to the old wide dimensions. (All call sites already
+      reference the `listWidth`/`EditorListWidth` constants, not hardcoded numbers --
+      confirmed via grep; they pick up the new widths automatically, no further change
+      needed.)
 - [ ] 4.4 Manually test in-game: confirm the reshaped dialog reads well at the new
       dimensions, at the vanilla lectern's typical viewing distance, before treating the
       dimensions as final.
 
 ## 5. Custom-drawn backdrop
 
-- [ ] 5.1 Decide placeholder backdrop implementation: a static image asset under
+- [x] 5.1 Decide placeholder backdrop implementation: a static image asset under
       `src/Mod/assets/scribe/textures/gui/` vs. a purely procedural Cairo fill+border draw
       (design.md leaves this open) — pick based on whichever is less code for a first cut.
-- [ ] 5.2 Implement the backdrop, composited behind composer content the way the reference
+      (Static image, using the engine's own `AddImageBG` helper — a tiled/scaled
+      `SurfacePattern` fill with rounded corners, confirmed via
+      `GuiElementImageBackground.ComposeElements` in the real vsapi source — rather than a
+      hand-rolled Cairo draw call. Placeholder generated via PIL: a mottled parchment-tone
+      512×512 PNG, `assets/scribe/textures/gui/lecternbackdrop.png`.)
+- [x] 5.2 Implement the backdrop, composited behind composer content the way the reference
       mod does it (Cairo `ImageSurface`/custom draw behind ordinary `GuiComposer`
-      elements) — replacing `AddShadedDialogBG`.
-- [ ] 5.3 Confirm the backdrop swap point (one asset path or one draw call) is isolated
+      elements) — replacing `AddShadedDialogBG`. (Both `ComposeReadView`/`ComposeEditorView`
+      now call `.AddImageBG(bgBounds, BackdropTexture)` instead.)
+- [x] 5.3 Confirm the backdrop swap point (one asset path or one draw call) is isolated
       enough that a future real per-tier texture can replace it with no change to
       `GuiDialogScribeLectern.cs`'s layout/composition logic — this is the requirement
       from `specs/lectern-gui-shell/spec.md`'s "Backdrop is swappable" scenario; verify it
       concretely (e.g. swap in a second placeholder image and confirm nothing else needs
-      to change) rather than assuming the architecture satisfies it.
+      to change) rather than assuming the architecture satisfies it. (Concretely verified:
+      generated a second placeholder image, overwrote the same asset path, rebuilt clean
+      with zero code changes, then restored the original.)
 - [ ] 5.4 Manually test in-game: confirm the backdrop renders correctly behind both read
       and editor view content, with no rows rendered behind/under an opaque part of the
       backdrop.
 
 ## 6. Row-list visual restyle
 
-- [ ] 6.1 Fix checkbox scaling: pass `size: ToggleWidth * textSizeScale` (or equivalent)
+- [x] 6.1 Fix checkbox scaling: pass `size: ToggleWidth * textSizeScale` (or equivalent)
       to `AddSwitch` in `ScribeBlockRowCell.Compose`, reusing the same `textSizeScale`
       factor `RowHeight` already applies (design.md decision 5). Manually test: drag the
       text-size slider across its range and confirm the checkbox grows/shrinks with the
-      row text, not staying a fixed pixel size.
+      row text, not staying a fixed pixel size. (`textSizeScale` threaded through
+      `Compose`/`TextWidth`; manual in-game slider test still pending in 9.3.)
 - [ ] 6.2 Investigate whether `GuiElementSwitch`'s existing rendering can read as
       "circular" via its own constructor/params, or needs a custom element (design.md's
       open question) — decide based on how it actually looks in-game at the new scaling.
-- [ ] 6.3 Increase row spacing and add a subtle divider between rows (or between the row
+- [x] 6.3 Increase row spacing and add a subtle divider between rows (or between the row
       list and the toolbar), matching the Slack reference's generous, airy spacing rather
-      than the current tight stacking.
-- [ ] 6.4 Implement hover-conditional icon visibility (delete icon, and the new pin
+      than the current tight stacking. (`RowSpacing` raised 6px -> 14px; `AddRowDivider`
+      adds a thin embossed `AddInset` line centered in the gap between rows, in both
+      views.)
+- [x] 6.4 Implement hover-conditional icon visibility (delete icon, and the new pin
       toggle from group 7) via a render-time mouse-position check inside each icon
       element's own rendering, not a recompose (design.md decision 6 — mirrors the
       vanilla title bar's own close/menu-icon hover-glow technique). Confirm no existing
-      `AddIf`/recompose call sites are used for this.
-- [ ] 6.5 Add a focus ring scoped to the actively-focused text field (task input or note
+      `AddIf`/recompose call sites are used for this. (New `ScribeHoverIconButton : GuiElementToggleButton`
+      overrides `RenderInteractiveElements` to skip drawing when the mouse isn't over a
+      caller-supplied `HoverRegion` -- the whole row's bounds, not the icon's own small
+      bounds. Used for both the delete icon and the new pin icon. Confirmed via grep: no
+      `AddIf` call site touches these icons.)
+- [x] 6.5 Add a focus ring scoped to the actively-focused text field (task input or note
       text area), rather than the whole row, matching the Slack reference's blue focus
       box around only the field being edited. Investigate what focus-indication the base
       `GuiElementEditableTextBase`/composer already draws by default before adding a
       custom one — this may already exist and only need confirming, not building.
+      (Confirmed via Explore agent against real vsapi source: both `GuiElementTextInput`
+      and `GuiElementTextArea` already draw a `HasFocus`-conditional white-wash highlight
+      in their own `RenderInteractiveElements`, scoped to that element only -- no custom
+      code needed. It's a subtle full-area alpha wash, not a crisp border; live visual
+      confirmation of whether that reads well enough deferred to 9.3.)
 - [ ] 6.6 Manually test in-game: confirm hover-icon show/hide does not reset focus or
       caret position while typing (the exact regression this render-time approach is
       meant to avoid — verify it actually holds, don't just assume the mechanism works).
 
 ## 7. Pin toggle GUI affordance
 
-- [ ] 7.1 Add a pin-toggle icon button to each task row in `ScribeBlockRowCell.Compose`,
+- [x] 7.1 Add a pin-toggle icon button to each task row in `ScribeBlockRowCell.Compose`,
       wired to a new `onTogglePin` callback (mirrors the existing `onToggle`/`onDelete`
       wiring shape). Hover-conditional per group 6.4. Text-section rows get no pin
-      affordance (design.md decision 7 — pin is task-only, same as `Done`).
-- [ ] 7.2 Wire the callback through `GuiDialogScribeLectern` to
+      affordance (design.md decision 7 — pin is task-only, same as `Done`). (Uses
+      `ScribeHoverIconButton` with the `wpCircle` waypoint-circle icon, `toggleable: true`
+      so its `On` state survives mouse-up elsewhere in the dialog -- see the class's own
+      doc comment for why `toggleable: false`, the delete icon's setting, would have
+      silently reset a seeded `Pinned` state.)
+- [x] 7.2 Wire the callback through `GuiDialogScribeLectern` to
       `scratchDocument.TogglePinned(index)`, following the same `isDirty = true` +
-      autosave pattern as `OnRowToggle`.
-- [ ] 7.3 Seed the pin toggle's visual on/off state from `block.Pinned` in
+      autosave pattern as `OnRowToggle`. (New `OnRowTogglePin` handler, identical shape.)
+- [x] 7.3 Seed the pin toggle's visual on/off state from `block.Pinned` in
       `ScribeBlockRowCell.ApplyValues`, alongside the existing `Done`/text seeding.
-- [ ] 7.4 Confirm `AssignedToUid` has zero GUI surface anywhere in this file — no column,
+      (`composer.GetToggleButton(PinKey(index)).On = block.Pinned`.)
+- [x] 7.4 Confirm `AssignedToUid` has zero GUI surface anywhere in this file — no column,
       no toggle, nothing composed or seeded (design.md non-goal; verify by grep, not
-      assumption).
+      assumption). (Grepped `src/Mod/` for `AssignedToUid` — zero matches.)
 - [ ] 7.5 Manually test in-game: pin and unpin a task in editor view; switch to read view
       and back; confirm the pinned state persists across a save/reload (fully quit and
       relaunch, not just close/reopen the dialog).
 
-## 8. Cleanup and verification
+## 8. Atlas integration-test coverage
 
-- [ ] 8.1 `dotnet build src/Mod/Mod.csproj` — confirm clean build.
-- [ ] 8.2 `dotnet test tests/Core.Tests/Core.Tests.csproj` — confirm all pass, including
-      group 2's new tests.
-- [ ] 8.3 Full manual playtest pass: place a lectern, open read + editor view, add enough
+`tests/Integration.Tests` (Pixnop.Atlas.XUnit, local-only — see README's "Running the Atlas
+suite") already covers persistence, the network edit round-trip, and the single-editor
+lock. It has no coverage yet of this change's new server-observable behavior: the pinned
+flag toggling and surviving a restart. (Scroll/portrait/backdrop are pure client-side GUI
+layout with no server-observable state, so they're out of scope for Atlas — covered by
+manual playtesting in group 9 instead.)
+
+- [x] 8.1 Add a scenario (e.g. to `ServerAuthoritativeEditScenarios.cs` or a new
+      `PinScenarios.cs`) that places a lectern, applies an edit pinning a task via
+      `ApplyEdit`/`ScribeDocumentCodec.Serialize`, and asserts `Document.Blocks[i].Pinned`
+      is `true` — mirroring the existing `ApplyEdit` usage pattern in
+      `FixtureBuilders.BuildsLecternWithDocumentFixture`. (New `PinScenarios.cs`: pin and
+      unpin, both through the real `ApplyEdit` path.)
+- [x] 8.2 Extend `PersistenceScenarios` (or add a sibling `[AtlasWorld]` class against a
+      new/updated fixture) asserting a pinned task's `Pinned` flag survives a genuine
+      `RestartWorld` — same shape as the existing
+      `Lectern_document_survives_a_server_restart` scenario. If this needs its own fixture,
+      regenerate via the `atlas fixture` workflow (per 2.6) rather than hand-editing the
+      `.vcdbs` file. (`FixtureBuilders.BuildsLecternWithDocumentFixture` now pins its task
+      before applying; `PersistenceScenarios` asserts `blocks[0].Pinned` post-restart;
+      fixture regenerated via `atlas fixture ... --force`.)
+- [x] 8.3 `dotnet test tests/Integration.Tests --filter "FullyQualifiedName!~FixtureBuilders"`
+      — confirm all scenarios pass, including the new ones. (12/12 passing, up from 10.)
+
+## 9. Cleanup and verification
+
+- [x] 9.1 `dotnet build src/Mod/Mod.csproj` — confirm clean build.
+- [x] 9.2 `dotnet test tests/Core.Tests/Core.Tests.csproj` — confirm all pass, including
+      group 2's new tests. (35/35 passing.)
+- [ ] 9.3 Full manual playtest pass: place a lectern, open read + editor view, add enough
       rows to require scrolling, drag-reorder while scrolled, resize via text-size slider,
       pin/unpin a task, confirm no regression versus `add-lectern-block`'s existing
       playtesting checklist (its tasks.md group 7) for anything not specific to the old
       wide layout or the old fixed checkbox size.
-- [ ] 8.4 Confirm old-version saved documents fail to load safely (no crash, no partial/
+- [x] 9.4 Confirm old-version saved documents fail to load safely (no crash, no partial/
       corrupt document) rather than silently misreading old bytes as new-format data —
-      this is the accepted-breaking-change behavior from design.md decision 8, verify it
-      actually fails safe rather than assuming the existing codec guarantee still holds
-      after the version bump.
-- [ ] 8.5 Update ROADMAP.md: mark the "skeuomorphic open-book UI... turn-page paging"
+      this is the accepted-breaking-change behavior from design.md decision 8; proven
+      empirically by task 2.6 (the integration suite's own fixture hit exactly this case:
+      failed safe with an empty document, no crash, no corruption).
+- [x] 9.5 Update ROADMAP.md: mark the "skeuomorphic open-book UI... turn-page paging"
       parked bullet as done/superseded per this change (backdrop delivered; pagination
       explicitly rejected in favor of scrolling) rather than leaving it duplicated.

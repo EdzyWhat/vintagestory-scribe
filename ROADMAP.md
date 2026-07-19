@@ -59,9 +59,14 @@ age (the saw); anything past that is cosmetic.
   button was removed deliberately (task 8.18 in `add-lectern-block`); the Core capability
   and `ScribeBlockRowCell`'s rendering of text-section rows are kept fully working so that
   future recipe can reuse them with no Core changes.
-- Replace the dynamically-sized GUI rows with a static-sized, skeuomorphic open-book UI
-  (fixed page layout, turn-page paging instead of a growing scroll list) -- see
-  https://mods.vintagestory.at/show/mod/42149 and similar mods for prior art.
+- ~~Replace the dynamically-sized GUI rows with a static-sized, skeuomorphic open-book UI
+  (fixed page layout, turn-page paging instead of a growing scroll list)~~ — superseded by
+  `skeuomorphic-lectern-gui`: delivered a custom-drawn (placeholder-art) backdrop and a
+  portrait reshape, but explicitly rejected pagination in favor of a continuous scrollable
+  region (design.md decision 4) — the document model's per-row dynamic height and
+  drag-reorder made pagination's cost not worth it. See
+  https://mods.vintagestory.at/show/mod/42149 for the prior-art reference that motivated
+  the backdrop mechanism, still relevant for future real per-tier art.
 - Move the editor's option bar (text-size slider, collapse toggle, add-task/add-note, the
   read/edit mode switch button) off the main content area entirely, into a side rail --
   similar to how the vanilla Survival Handbook keeps its category tabs docked to the side of

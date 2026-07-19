@@ -28,6 +28,26 @@ public class ScribeDocumentCodecTests
     }
 
     [Fact]
+    public void RoundTrip_PreservesPinnedAndAssignedToUid()
+    {
+        var original = new ScribeDocument();
+        original.AddTask("Find copper");
+        original.AddTask("Find tin");
+        original.TogglePinned(0); // pinned, AssignedToUid still null
+        original.Blocks[1].AssignedToUid = "player-1234";
+
+        byte[] bytes = ScribeDocumentCodec.Serialize(original);
+        bool ok = ScribeDocumentCodec.TryDeserialize(bytes, out ScribeDocument? restored);
+
+        Assert.True(ok);
+        Assert.NotNull(restored);
+        Assert.True(restored!.Blocks[0].Pinned);
+        Assert.Null(restored.Blocks[0].AssignedToUid);
+        Assert.False(restored.Blocks[1].Pinned);
+        Assert.Equal("player-1234", restored.Blocks[1].AssignedToUid);
+    }
+
+    [Fact]
     public void RoundTrip_EmptyDocument()
     {
         var original = new ScribeDocument();
@@ -44,6 +64,30 @@ public class ScribeDocumentCodecTests
     public void TryDeserialize_EmptyBytes_FailsSafely()
     {
         bool ok = ScribeDocumentCodec.TryDeserialize(Array.Empty<byte>(), out ScribeDocument? restored);
+
+        Assert.False(ok);
+        Assert.Null(restored);
+    }
+
+    [Fact]
+    public void TryDeserialize_EarlierVersionBytes_FailsSafely()
+    {
+        // Hand-build a v2-shaped payload (no Pinned/AssignedToUid fields) to simulate bytes
+        // written before this version bump -- the codec must reject it outright, not
+        // misread the missing fields as defaults.
+        using var ms = new MemoryStream();
+        using (var w = new BinaryWriter(ms))
+        {
+            w.Write("SCRB"u8.ToArray());
+            w.Write((byte)2);
+            w.Write(1); // blockCount
+            w.Write((byte)ScribeBlockKind.Task);
+            w.Write(false); // done
+            w.Write(0); // depth
+            w.Write("Old-format task"); // text
+        }
+
+        bool ok = ScribeDocumentCodec.TryDeserialize(ms.ToArray(), out ScribeDocument? restored);
 
         Assert.False(ok);
         Assert.Null(restored);
