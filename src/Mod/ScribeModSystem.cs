@@ -54,8 +54,8 @@ public sealed class ScribeModSystem : ModSystem
 
     private void OnClientReceivedEditReply(ScribeEditDocumentMessage message)
     {
-        var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
-        if (capi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        if (capi is null) return;
+        if (TryGetLectern(capi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
         {
             lectern.HandleServerReply(message);
         }
@@ -63,8 +63,8 @@ public sealed class ScribeModSystem : ModSystem
 
     private void OnServerReceivedEdit(IServerPlayer fromPlayer, ScribeEditDocumentMessage message)
     {
-        var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
-        if (sapi is not null && sapi.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        if (sapi is null) return;
+        if (TryGetLectern(sapi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
         {
             if (!lectern.ApplyEdit(fromPlayer, message.DocumentBytes))
             {
@@ -75,8 +75,8 @@ public sealed class ScribeModSystem : ModSystem
 
     private void OnServerReceivedReleaseLock(IServerPlayer fromPlayer, ScribeReleaseLockMessage message)
     {
-        var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
-        if (sapi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        if (sapi is null) return;
+        if (TryGetLectern(sapi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
         {
             lectern.ReleaseLock(fromPlayer.PlayerUID);
         }
@@ -84,10 +84,16 @@ public sealed class ScribeModSystem : ModSystem
 
     private void OnServerReceivedRequestAccess(IServerPlayer fromPlayer, ScribeRequestAccessMessage message)
     {
-        var pos = new BlockPos(message.PosX, message.PosY, message.PosZ);
-        if (sapi?.World.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos) is { } lectern)
+        if (sapi is null) return;
+        if (TryGetLectern(sapi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
         {
             lectern.OnRequestAccess(fromPlayer, message.WantEditor);
         }
+    }
+
+    private static BlockEntityScribeLectern? TryGetLectern(IWorldAccessor world, int x, int y, int z)
+    {
+        var pos = new BlockPos(x, y, z);
+        return world.BlockAccessor.GetBlockEntity<BlockEntityScribeLectern>(pos);
     }
 }

@@ -432,6 +432,18 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         args.Handled = true;
     }
 
+    /// <summary>Wired to <see cref="ScribeDragHandleElement.OnDragMouseUp"/>, which only fires
+    /// when the mouse-up lands within THIS row's own drag-handle bounds (checked by the
+    /// element's own <c>IsPositionInside</c>, inherited from the base <c>GuiElement.OnMouseUp</c>).
+    /// The dialog-level <see cref="OnMouseUp"/> below has no equivalent per-row bounds check --
+    /// it only tracks <see cref="draggedBlockIndex"/>/<see cref="hoverTargetIndex"/> state, which
+    /// persists regardless of exactly where the release landed -- so this can't be folded into
+    /// it without duplicating that per-row hit-test. <c>ScribeDragHandleElement</c> is a minimal
+    /// custom element (base <c>GuiElementStaticText</c>), not a real button/switch widget, so
+    /// unlike those it does not mark <c>Handled</c> on its own; without this, releasing over the
+    /// drag handle would leave the mouse-up unhandled and risk a click-through to world
+    /// interaction (the same reason the title bar's own close icon explicitly sets
+    /// <c>Handled = true</c> on its own hit, confirmed via decompile).</summary>
     private void OnRowDragMouseUp(int index, MouseEvent args)
     {
         args.Handled = true;
