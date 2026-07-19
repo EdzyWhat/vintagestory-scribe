@@ -1,12 +1,12 @@
 {
 	"block-scribelectern": "Lectern",
-	"blockhelp-scribelectern-open": "Open",
+	"blockhelp-scribelectern-open": "Read",
+	"blockhelp-scribelectern-edit": "Edit",
 
 	"scribe-gui-title": "Lectern",
 	"scribe-gui-addtask": "Add Task",
-	"scribe-gui-addtext": "Add Text",
+	"scribe-gui-addtext": "Add Note",
 	"scribe-gui-delete": "Delete",
-	"scribe-gui-reorder": "Reorder",
 	"scribe-gui-textsize": "Text Size",
 	"scribe-gui-locked": "Only one person can use the lectern at a time.",
 	"scribe-gui-switch-to-editor": "Edit",

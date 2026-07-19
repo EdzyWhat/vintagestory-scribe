@@ -109,7 +109,7 @@ public sealed class BlockEntityScribeLectern : BlockEntity
 
         if (lockHolderUid is not null && lockHolderUid != byPlayer.PlayerUID)
         {
-            SendReply(sapi, byPlayer, granted: false, editorMode: true, refusalReason: "scribe-gui-locked");
+            SendReply(sapi, byPlayer, granted: false, editorMode: true, refusalReason: "scribe:scribe-gui-locked");
             return;
         }
 
@@ -187,7 +187,7 @@ public sealed class BlockEntityScribeLectern : BlockEntity
     /// </summary>
     public void SendSaveFailedAck(ICoreServerAPI sapi, IServerPlayer toPlayer)
     {
-        SendReply(sapi, toPlayer, granted: false, editorMode: true, refusalReason: "scribe-gui-save-failed");
+        SendReply(sapi, toPlayer, granted: false, editorMode: true, refusalReason: "scribe:scribe-gui-save-failed");
     }
 
     /// <summary>Client-side: handles the server's reply to an open request, mode-switch request, or autosave tick.</summary>
@@ -209,7 +209,7 @@ public sealed class BlockEntityScribeLectern : BlockEntity
             // grant/refusal or a post-autosave-tick ack, not a fresh open.
             if (!message.Granted)
             {
-                capi.TriggerIngameError(this, "scribe-lectern-locked", Lang.Get(message.RefusalReason ?? "scribe-gui-locked"));
+                capi.TriggerIngameError(this, "scribe-lectern-locked", Lang.Get(message.RefusalReason ?? "scribe:scribe-gui-locked"));
                 return;
             }
 
@@ -224,7 +224,7 @@ public sealed class BlockEntityScribeLectern : BlockEntity
         // No dialog open yet: this is the reply to a fresh right-click.
         if (!message.Granted)
         {
-            capi.TriggerIngameError(this, "scribe-lectern-locked", Lang.Get(message.RefusalReason ?? "scribe-gui-locked"));
+            capi.TriggerIngameError(this, "scribe-lectern-locked", Lang.Get(message.RefusalReason ?? "scribe:scribe-gui-locked"));
             // Editor access was refused, but we still have the current document — open read-only.
             clientDialog = new GuiDialogScribeLectern(capi, this, isEditorMode: false, message.DocumentBytes);
             clientDialog.TryOpen();
