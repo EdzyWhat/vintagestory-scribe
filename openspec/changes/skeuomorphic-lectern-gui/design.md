@@ -6,6 +6,14 @@ stacked by absolute Y and no clipped/scrollable region — `add-lectern-block` t
 already flags the latter as an unresolved gap, currently stopgapped by capping the
 text-size slider (`MaxTextSizePercent = 150`).
 
+Separately, a Slack task-list screenshot (`~/Desktop/SlackTasks.png`) was used as a
+reference for the row list's visual language — restyling toward that look surfaced two
+more concrete asks: a checkbox-scaling bug (confirmed in code, see Decision 5) and a new
+per-task "pin to HUD" concept, which in turn raised a related but semantically-unresolved
+idea already logged in `ROADMAP.md` — per-task assignment for the future faction-aware
+Writing Desk (v4). Both new fields share one Core model/persistence change, bundled here
+rather than as two separate codec version bumps.
+
 The reference mod "Wanderer's Sketchbook" was inspected directly (its shipped zip
 extracted to `/tmp`, not decompiled beyond `strings` on the DLL — consistent with
 `VSAPI-NOTES.md`'s check-before-decompiling discipline) to confirm a skeuomorphic backdrop
@@ -32,15 +40,24 @@ this change targets, and the *pagination* model is explicitly not what we're bui
 - Swap the generic shaded panel for a custom-drawn backdrop, shippable today with a cheap
   placeholder and swappable to real per-tier art later with no code change.
 - Add a real scrollable/clipped region for the row list, resolving task 8.15.
+- Restyle the row list toward a flatter, less generic look (checkbox scaling fix,
+  hover-conditional icons, focus ring, row spacing) informed by a Slack reference.
+- Add a per-task pin flag and its toggle affordance; reserve (but don't expose) an
+  assignment field for the future Desk work.
 
 **Non-Goals:**
 
 - Pagination in any form — deliberately rejected in favor of continuous scrolling.
 - Producing final per-tier backdrop art (clay tablet, notebook, desk, bulletin board) —
   future asset work, only unblocked by this change's architecture.
-- Any change to `lectern-block`'s persistence/networking or `task-note-document`'s model —
-  presentation-layer only.
+- Any change to `lectern-block`'s persistence/networking mechanics, or to
+  `task-note-document`'s existing operations (add/edit/toggle-complete/delete/reorder) —
+  this change adds two new fields/one new mutation, it does not restructure the model.
 - Deciding whether v2's notebook reuses this same GUI shell — separate future decision.
+- Rendering pinned tasks on an actual HUD — v5's job, not this change's.
+- Resolving `AssignedToUid`'s real semantics (single UID vs. shared list vs. faction-mod
+  dependency) or exposing any GUI/mutation for it — reserved field only; a future
+  Desk-focused change owns this decision, per the still-open ROADMAP.md research question.
 
 ## Decisions
 
@@ -83,6 +100,66 @@ with an added clip/scroll wrapper, rather than a redesign.
 decision; the layout-model cost is real and the reference mod's motivation (a drawing
 canvas needs one thing on screen at a time) doesn't apply to Scribe's list-based content.
 
+**5. Checkbox scaling: pass a computed `size` to `AddSwitch`, reusing the same scale
+factor `RowHeight` already applies — no new mechanism.**
+`GuiElementSwitch`'s constructor already accepts a `size` parameter (default 30,
+confirmed via decompile: `/private/tmp/switch_decompile/...GuiElementSwitch.decompiled.cs`)
+that the composer helper never varies today — `ScribeBlockRowCell.Compose` calls
+`AddSwitch(onToggle, toggleBounds, key)` with no `size` argument, so every checkbox
+renders at the same fixed pixel size regardless of `clientConfig.TextSizeScale`. Fix is a
+one-line change at that call site: pass `size: ToggleWidth * textSizeScale` (the same
+factor `RowHeight(block, textSizeScale)` already multiplies by), so the checkbox grows
+and shrinks in lockstep with the row's text and height.
+*Alternative:* a custom switch element with its own scaling logic — rejected, the
+built-in parameter already does exactly this, no need to reimplement.
+
+**6. Hover-conditional icon visibility via a render-time mouse check, NOT a recompose.**
+The composer's existing `AddIf(condition)` pattern only evaluates its condition at
+*compose* time — using it for "is the mouse over this row right now" would mean
+recomposing on every mouse-move, which resets focus/caret on every relevant element
+(the same problem already tracked as the still-open, general-form backlog item 8.5 in
+`add-lectern-block`). Instead, each row's icon elements check live mouse position inside
+their own `RenderInteractiveElements` override and skip drawing when the mouse isn't over
+the row — the same technique the vanilla title bar itself already uses for its
+close/menu-icon hover-glow (confirmed via decompile:
+`GuiElementDialogTitleBar.RenderInteractiveElements` checks
+`closeIconRect.PointInside(mouseX - Bounds.absX, mouseY - Bounds.absY)` every frame, no
+recompose). This is new territory for `ScribeBlockRowCell` specifically (today only the
+title bar and our own `ScribeDragHandleElement` do any custom per-element rendering), but
+reuses an established in-engine pattern, not an invented one.
+*Alternative:* `AddIf`-based conditional composition, triggered by a lightweight
+mouse-move handler that only recomposes when hover state actually changes (similar to how
+`OnRowTextChanged` already deduplicates before recomposing) — rejected as more complex
+than necessary; a render-time check needs no recompose at all, so there's nothing to
+deduplicate or debounce.
+
+**7. Pin flag and reserved assignment field live on `ScribeBlock` directly, as a bool and
+a nullable string respectively — not a separate lookup/side-table.**
+Matches the existing model: `Done`, `Depth`, etc. are already per-block fields on
+`ScribeBlock` itself, not a side collection keyed by index. `Pinned` is meaningful for
+task blocks only (mirrors `Done`'s existing task-only convention); `AssignedToUid` is
+reserved on every block for now since the future Desk semantics aren't decided — scoping
+it to tasks-only prematurely would bake in an assumption ROADMAP.md explicitly flags as
+still open.
+*Alternative:* a separate `Dictionary<int, PinState>`-style side table — rejected, adds
+indirection for no benefit; every other per-block flag already lives on the block.
+
+**8. One codec version bump for both new fields, accepting the pre-release breaking
+change rather than adding backward-compat parsing.**
+`ScribeDocumentCodec`'s version-mismatch behavior (reject + fail-safe, no partial/corrupt
+read) was designed for the v1→v2 change, which *restructured* the document (flat
+tasks+note → ordered blocks) — no lossless migration was possible then, so "reject" was
+the only honest option. This v2→v3 change is different: purely additive (every v2 block
+maps 1:1 to a v3 block, `Pinned`/`AssignedToUid` defaulting to `false`/`null`), so a
+compat parse path is actually feasible here for the first time. Explicitly decided
+against building it anyway: this is pre-release test-world data, and the compat-parsing
+machinery (a switch on version number, one parser per historical version) is real
+ongoing-maintenance cost for a guarantee not otherwise needed yet. Revisit this decision
+once the mod has real player worlds to protect.
+*Alternative:* add the v2-compatible parse path now, since it's cheap for this
+specific additive case — rejected per explicit user decision; deferred until backward
+compatibility actually matters.
+
 ## Open Questions
 
 - **Does the "move the tool panel into a side rail" parked ROADMAP idea still make sense
@@ -95,6 +172,10 @@ canvas needs one thing on screen at a time) doesn't apply to Scribe's list-based
 - **Placeholder backdrop: static image asset vs. procedural Cairo draw?** Both satisfy
   "swappable later"; the choice affects whether the swap point is an asset file or a
   method — decide during implementation, not here.
+- **Can `GuiElementSwitch`'s existing rounded-rect rendering read as "circular" via its
+  own constructor/params, or does the Slack-style circular checkbox need a custom
+  element?** Not determined from the decompiled source alone — decide by testing the
+  built-in element's visual result in-game before reaching for a custom implementation.
 
 ## Resolved (carried over from earlier exploration, not re-litigated)
 
@@ -107,11 +188,19 @@ canvas needs one thing on screen at a time) doesn't apply to Scribe's list-based
 - **Portrait reshape changes row width, which changes text-wrap points for existing notes**
   → acceptable; no persisted data changes, only presentation. Existing documents render
   differently but aren't migrated or altered.
-- **Merge conflict with `add-lectern-block`'s in-flight `src/Mod/` edits** → mitigated by
-  the same sequencing rule as `reduce-agent-overhead`: implementation tasks are blocked
-  until those changes land; tasks.md marks this explicitly.
 - **Scrollable/clipped region is new territory for this codebase** (mentioned as
   unexplored in `add-lectern-block/design.md`'s own risk notes, pointing at
   `GuiDialogTrader`'s scrollbar as the reference pattern) → check `VSAPI-NOTES.md` and
   `GuiDialogTrader` before inventing an approach; add findings to `VSAPI-NOTES.md` if any
   new gotchas surface, per that file's existing discipline.
+- **Codec version bump breaks pre-release saved documents (BREAKING, accepted per
+  Decision 8)** → any lectern document saved under the current version fails to
+  deserialize after this change ships; not a corruption risk (the codec fails safe), but
+  test-world content will need re-creating. Acceptable now; would need the deferred
+  compat-parsing path (Decision 8's alternative) before this mod has real player worlds.
+- **Render-time hover-visibility (Decision 6) is new territory for `ScribeBlockRowCell`**
+  → mitigated by reusing the vanilla title bar's own established pattern rather than
+  inventing one; add any new gotcha to `VSAPI-NOTES.md` per existing project discipline.
+- **`AssignedToUid` is reserved with no consumer yet** → dead weight in the serialized
+  format until the Desk work lands; acceptable since it's one extra nullable-string field
+  in an already-bumping codec version, not a separate migration later.
