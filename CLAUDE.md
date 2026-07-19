@@ -27,8 +27,15 @@ architecture, not this file.
 ## Modding references
 
 Before inventing a pattern from scratch or reverse-engineering `VintagestoryAPI.dll`
-(decompiling is a fallback, not a first resort — it was only needed once, for
-`GuiDialogBlockEntity`'s undocumented dedup/auto-close behavior), check these first:
+(decompiling is a fallback, not a first resort), check these first, in order:
+
+1. **`VSAPI-NOTES.md`** — symptom-indexed facts about API internals we already learned the
+   hard way (GUI composer lifecycle, `Lang` domain-prefixing, text wrapping). Check here
+   first: several v1 bugs were misdiagnosed for multiple rounds (as staging issues, etc.)
+   before someone decompiled and found the real cause — don't repeat that.
+2. The wiki and shipped-mod source below.
+3. Decompiling `VintagestoryAPI.dll` itself, as a last resort — and when you do, add the
+   finding to `VSAPI-NOTES.md` so it's not re-derived next tier.
 
 - **The wiki**: https://wiki.vintagestory.at/Category:Modding — start at `Modding:GUIs` for
   dialog/composer questions. Page-specific lookups (e.g.

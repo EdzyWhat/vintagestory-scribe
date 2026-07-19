@@ -26,11 +26,15 @@ echo "Packaging ${MODID} v${VERSION}"
 # Build the mod in Release.
 dotnet build src/Mod/Mod.csproj --configuration Release
 
-# Stage the mod contents.
+# Stage the mod contents. Copy every built DLL, not just Scribe.dll -- the mod references
+# Scribe.Core.dll as a separate assembly (not merged/ILRepacked), so it must ship alongside
+# the mod DLL or the game fails to load the block entity class at runtime with a
+# FileNotFoundException. VintagestoryAPI.dll itself is excluded from the build output
+# (Private=false in Mod.csproj), so a blanket *.dll copy is safe.
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 cp "$MODINFO" "$STAGE/"
-cp src/Mod/bin/Release/net10.0/Scribe.dll "$STAGE/"
+cp src/Mod/bin/Release/net10.0/*.dll "$STAGE/"
 if [[ -d src/Mod/assets ]]; then
   cp -R src/Mod/assets "$STAGE/assets"
 fi

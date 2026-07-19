@@ -19,3 +19,6 @@ Mods/
 # Local env / secrets
 .env
 *.local
+
+# Screenshots: not tracked yet (curate and un-ignore selectively later)
+screenshots/
