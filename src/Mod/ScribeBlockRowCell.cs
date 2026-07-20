@@ -86,36 +86,29 @@ public sealed class ScribeHoverIconButton : GuiElementToggleButton
 /// </summary>
 public static class ScribeBlockRowCell
 {
-    public const double TaskRowHeight = 30;
-    public const double TextSectionRowHeight = 70;
-
-    private const double ToggleWidth = 28;
-    private const double DeleteWidth = 32;
-    private const double DragHandleWidth = 24;
-    private const double PinWidth = 32;
-
-    /// <summary>Row height scales with <paramref name="textSizeScale"/> so a row can always fit
-    /// its text at the current font size -- the text input/text area elements size themselves
-    /// to their bounds, not to their font, so without this larger fonts get clipped.</summary>
-    public static double RowHeight(ScribeBlock block, double textSizeScale = 1.0) =>
-        (block.IsTask ? TaskRowHeight : TextSectionRowHeight) * textSizeScale;
+    /// <summary>Row height scales with <paramref name="config"/>'s <c>TextSizeScale</c> so a
+    /// row can always fit its text at the current font size -- the text input/text area
+    /// elements size themselves to their bounds, not to their font, so without this larger
+    /// fonts get clipped.</summary>
+    public static double RowHeight(ScribeBlock block, ScribeClientConfig config) =>
+        (block.IsTask ? config.TaskRowHeight : config.TextSectionRowHeight) * config.TextSizeScale;
 
     /// <summary>The text element's own width within a row of <paramref name="rowWidth"/> --
     /// the same math <see cref="Compose"/> uses internally, exposed so callers can measure
-    /// wrapped text height against the real width before laying out the row.
-    /// <paramref name="textSizeScale"/> must match whatever scale <see cref="Compose"/> is
-    /// called with for the same row, since the reserved toggle-column width scales with it
-    /// (see <see cref="Compose"/>'s checkbox-scaling comment) -- passing a mismatched scale
-    /// would reserve too little/much space and either clip the checkbox or overlap the text.
-    /// Task rows also reserve a pin-icon column (<see cref="PinWidth"/>) alongside the delete
-    /// icon -- text sections get neither the toggle nor the pin column, mirroring pin's
-    /// task-only restriction (design.md decision 7).</summary>
-    public static double TextWidth(double rowWidth, bool isTask, bool showDragHandle, double textSizeScale = 1.0)
+    /// wrapped text height against the real width before laying out the row. <paramref
+    /// name="config"/> must be the same instance <see cref="Compose"/> is called with for the
+    /// same row, since the reserved toggle-column width scales with <c>TextSizeScale</c> (see
+    /// <see cref="Compose"/>'s checkbox-scaling comment) -- passing a mismatched scale would
+    /// reserve too little/much space and either clip the checkbox or overlap the text. Task
+    /// rows also reserve a pin-icon column (<c>config.PinWidth</c>) alongside the delete icon
+    /// -- text sections get neither the toggle nor the pin column, mirroring pin's task-only
+    /// restriction (design.md decision 7).</summary>
+    public static double TextWidth(double rowWidth, bool isTask, bool showDragHandle, ScribeClientConfig config)
     {
-        double dragHandleWidth = showDragHandle ? DragHandleWidth : 0;
-        double toggleWidth = isTask ? ToggleWidth * textSizeScale : 0;
-        double pinWidth = isTask ? PinWidth : 0;
-        return rowWidth - dragHandleWidth - toggleWidth - pinWidth - DeleteWidth;
+        double dragHandleWidth = showDragHandle ? config.DragHandleWidth : 0;
+        double toggleWidth = isTask ? config.ToggleWidth * config.TextSizeScale : 0;
+        double pinWidth = isTask ? config.PinWidth : 0;
+        return rowWidth - dragHandleWidth - toggleWidth - pinWidth - config.DeleteWidth;
     }
 
     /// <summary>Measures how tall <paramref name="text"/> actually renders when wrapped to
@@ -156,9 +149,9 @@ public static class ScribeBlockRowCell
         System.Action<int> onToggle,
         System.Action<int, string> onTextChanged,
         System.Action<int> onDelete,
+        ScribeClientConfig config,
         System.Action<int, MouseEvent>? onDragMouseDown = null,
         System.Action<int, MouseEvent>? onDragMouseUp = null,
-        double textSizeScale = 1.0,
         System.Action<int>? onTogglePin = null)
     {
         // rowBounds is used throughout this method purely as a position/size source (its
@@ -170,36 +163,36 @@ public static class ScribeBlockRowCell
         composer.CurParentBounds.WithChild(rowBounds);
 
         double x = rowBounds.fixedX;
-        double dragHandleWidth = showDragHandle ? DragHandleWidth : 0;
+        double dragHandleWidth = showDragHandle ? config.DragHandleWidth : 0;
 
         if (showDragHandle)
         {
-            var dragBounds = ElementBounds.Fixed(x, rowBounds.fixedY, DragHandleWidth, rowBounds.fixedHeight);
+            var dragBounds = ElementBounds.Fixed(x, rowBounds.fixedY, config.DragHandleWidth, rowBounds.fixedHeight);
             var dragHandle = new ScribeDragHandleElement(composer.Api, "::", font, dragBounds)
             {
                 OnDragMouseDown = args => onDragMouseDown?.Invoke(index, args),
                 OnDragMouseUp = args => onDragMouseUp?.Invoke(index, args),
             };
             composer.AddInteractiveElement(dragHandle, DragHandleKey(index));
-            x += DragHandleWidth;
+            x += config.DragHandleWidth;
         }
 
         // GuiElementSwitch's constructor unconditionally overwrites bounds.fixedWidth/Height
         // to its own `size` param (confirmed via decompile,
         // /private/tmp/switch_decompile/...GuiElementSwitch.decompiled.cs) -- passing the
-        // bounds' own (fixed 28px) width/height does nothing; `size:` is the only knob that
-        // actually controls rendered size. Scaling it by textSizeScale keeps the checkbox in
-        // step with the row's text/height (design.md decision 5) instead of staying a
-        // constant pixel size while everything around it grows/shrinks.
-        double toggleWidth = block.IsTask ? ToggleWidth * textSizeScale : 0;
+        // bounds' own fixed width/height does nothing; `size:` is the only knob that actually
+        // controls rendered size. Scaling it by TextSizeScale keeps the checkbox in step with
+        // the row's text/height (design.md decision 5) instead of staying a constant pixel
+        // size while everything around it grows/shrinks.
+        double toggleWidth = block.IsTask ? config.ToggleWidth * config.TextSizeScale : 0;
         if (block.IsTask)
         {
-            var toggleBounds = ElementBounds.Fixed(x, rowBounds.fixedY, ToggleWidth, rowBounds.fixedHeight);
+            var toggleBounds = ElementBounds.Fixed(x, rowBounds.fixedY, config.ToggleWidth, rowBounds.fixedHeight);
             composer.AddSwitch(on => onToggle(index), toggleBounds, ToggleKey(index), size: toggleWidth);
             x += toggleWidth;
         }
 
-        double textWidth = TextWidth(rowBounds.fixedWidth, block.IsTask, showDragHandle, textSizeScale);
+        double textWidth = TextWidth(rowBounds.fixedWidth, block.IsTask, showDragHandle, config);
         var textBounds = ElementBounds.Fixed(x, rowBounds.fixedY, textWidth, rowBounds.fixedHeight);
 
         if (block.IsTask)
@@ -219,23 +212,23 @@ public static class ScribeBlockRowCell
         // wasted either).
         if (block.IsTask)
         {
-            var pinBounds = ElementBounds.Fixed(x, rowBounds.fixedY, PinWidth, rowBounds.fixedHeight);
+            var pinBounds = ElementBounds.Fixed(x, rowBounds.fixedY, config.PinWidth, rowBounds.fixedHeight);
             var pinButton = new ScribeHoverIconButton(composer.Api, "wpCircle", _ => onTogglePin?.Invoke(index), pinBounds, toggleable: true)
             {
                 HoverRegion = rowBounds,
             };
             composer.AddInteractiveElement(pinButton, PinKey(index));
-            composer.AddHoverText(Lang.Get("scribe:scribe-gui-pin"), CairoFont.WhiteSmallText(), 150, pinBounds.FlatCopy());
-            x += PinWidth;
+            composer.AddHoverText(Lang.Get("scribe:scribe-gui-pin"), CairoFont.WhiteSmallText(), (int)config.HoverTextWidth, pinBounds.FlatCopy());
+            x += config.PinWidth;
         }
 
-        var deleteBounds = ElementBounds.Fixed(x, rowBounds.fixedY, DeleteWidth, rowBounds.fixedHeight);
+        var deleteBounds = ElementBounds.Fixed(x, rowBounds.fixedY, config.DeleteWidth, rowBounds.fixedHeight);
         var deleteButton = new ScribeHoverIconButton(composer.Api, "eraser", _ => onDelete(index), deleteBounds)
         {
             HoverRegion = rowBounds,
         };
         composer.AddInteractiveElement(deleteButton, DeleteKey(index));
-        composer.AddHoverText(Lang.Get("scribe:scribe-gui-delete"), CairoFont.WhiteSmallText(), 150, deleteBounds.FlatCopy());
+        composer.AddHoverText(Lang.Get("scribe:scribe-gui-delete"), CairoFont.WhiteSmallText(), (int)config.HoverTextWidth, deleteBounds.FlatCopy());
     }
 
     /// <summary>

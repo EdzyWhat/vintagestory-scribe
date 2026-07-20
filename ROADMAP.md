@@ -51,7 +51,54 @@ age (the saw); anything past that is cosmetic.
   standalone effort).
 - Paper progression (reed/papyrus → parchment).
 - Location-tagged entries.
-- Optional in-game settings panel (ConfigLib, soft dependency).
+- **~~Optional in-game settings panel (ConfigLib, soft dependency)~~ — adopted
+  2026-07-19** (`add-imgui-configlib-tuning`): `src/Mod/assets/scribe/config/
+  configlib-patches.json` exposes seven `ScribeClientConfig` layout fields
+  (`VisibleListHeight`, `RowSpacing`, `TopContentGap`, `ReadListWidth`, `EditorListWidth`,
+  `RowDividerThickness`, `RowDividerBrightness`) via the manifest's `"file"` key, which
+  reads/writes the existing config file directly — confirmed by decompiling the actually
+  installed `configlib_1.12.0.zip` (`ConfigLibModSystem.LoadConfig`), not just the public
+  wiki, since the wiki's own JSON-API page doesn't document the `"file"`-key path at all
+  (only the asset-patching path). **Correction to this entry's original research: no
+  usable NuGet package exists for ConfigLib** — referenced instead via a `HintPath`
+  against the DLL vendored from the installed mod `.zip` (`src/Mod/lib/`, see its
+  README). Confirmed hard-depends on `vsimgui`, as originally noted.
+- **~~ImGui mod (mods.vintagestory.at/imgui) — for live GUI-layout tuning~~ — adopted
+  2026-07-19** (`add-imgui-configlib-tuning`): `GuiDialogScribeLectern`'s `#if
+  DEBUG`-gated `RegisterDebugSliders()` binds the same seven layout fields via
+  `VSImGui.Debug.DebugWidgets.FloatSlider`, letting a developer drag a slider and see the
+  dialog recompose live. **Correction to this entry's original research**: no forced
+  per-frame recompose is needed — `DebugWidgets` entries are drawn automatically by
+  VSImGui's own always-on debug-window handler (`ImGuiModSystem`'s `Draw` event, confirmed
+  via decompiling the installed `vsimgui_1.2.7.zip`, not the published (stale, net7.0)
+  NuGet package). Excluded from Release builds via a `Configuration == 'Debug'` Condition
+  on `Mod.csproj`'s VSImGui `<Reference>` `ItemGroup`, not just `#if DEBUG` at call
+  sites — confirmed via build output inspection that no VSImGui/ImGui DLL reaches
+  `bin/Release/`.
+- **ToastLib (mods.vintagestory.at/toastlib) — investigated as a possible base for the v5
+  pinned-task HUD, rejected.** Researched 2026-07-19: stale for 1.22.x (targets
+  1.21.1–1.21.5), hard-depends on ImGui, and its API/lifecycle (`ShowToastAdv`, slide-in/
+  out, auto-dismiss) is purpose-built for transient messages with no "persist and update
+  every tick" primitive — not a fit for an always-on HUD. If/when the v5 HUD gets built,
+  go straight to ImGui rather than through this.
+- **Custom checkbox visual with stamp/erase animation + sound.** From playtesting
+  feedback (2026-07-19): replace the plain checkbox with a custom visual that scales
+  with text size (building on the checkbox-scaling fix already shipped), plus a
+  satisfying "stamp" animation and sound on check, an "eraser" sound on uncheck, both
+  with randomized variations so repeated use doesn't feel mechanical. Purely
+  presentational reward-for-completion polish — no data-model changes. Needs actual art/
+  audio assets, not just code, so this waits until closer to a polish pass rather than
+  competing with core-tier work.
+- **Icon-font audit session.** From playtesting feedback (2026-07-19): a dedicated
+  session to open the engine's built-in icon-font options for the user, list every icon
+  currently in use across the lectern GUI (drag handle, pin, delete, add-task, collapse,
+  switch-view), and ask whether any should change. Distinct from a code task — mostly a
+  presentation/decision session that may produce small follow-up icon-swap tasks.
+- **Configurable text-size minimum.** `ScribeClientConfig.MaxTextSizePercent` already
+  caps the upper end of the text-size slider; from playtesting feedback (2026-07-19), add
+  a matching minimum (e.g. down to 20%) so the lower end is also tunable rather than
+  hardcoded at the slider's current floor. Small, low-risk — bundle with a config-pass
+  change rather than a dedicated one.
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
 - Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are

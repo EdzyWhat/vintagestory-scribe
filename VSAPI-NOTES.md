@@ -153,6 +153,30 @@ structure, `RowListCullBuffer`, and `OnRowListScroll`.
 
 ---
 
+**Symptom: with the row-list culling fix above already in place, a row's tail still
+renders past the dialog's bottom edge once scrolled to a specific position (not
+necessarily at the very top of the scroll range).**
+
+The cull test above must require *full containment* of a row within the visible window,
+not mere *overlap*. An overlap test (`rowBottom < windowTop || rowTop > windowBottom` →
+skip) still composes a row that only partially intersects the window — and since nothing
+here visually clips a composed row's rendering (see the entry above), that row renders at
+its full, unclipped height, with the portion outside the window bleeding straight past the
+dialog's drawn frame. Confirmed live via the playtest-checklist app: scrolling to a
+position where a row straddled `windowBottom` made its tail (up to a full row's height,
+here ~30px, coincidentally close to but unrelated to the title bar's height) render below
+the dialog.
+
+**Fix pattern:** require full containment, not overlap: `rowTop < windowTop || rowBottom >
+windowBottom` → skip. A row now only composes once entirely inside the visible window,
+popping in/out cleanly at the scroll boundary instead of rendering a partial tail.
+Tradeoff: a single row taller than the visible window itself can never be fully contained
+at any scroll position and will never render — inherent to cull-don't-clip; would need real
+clipping (confirmed unavailable, see the entry above) to fix. See
+`GuiDialogScribeLectern.cs`'s pass-2 comments in `ComposeReadView`/`ComposeEditorView`.
+
+---
+
 **Gotcha (engine inconsistency, not yet hit but worth flagging): `GuiElementTextArea`'s own
 wrap-height write skips a GUIScale division that `GuiElementDynamicText`/
 `GuiElementTextBase` both apply for the same operation.** `GuiElementTextArea.TextChanged()`

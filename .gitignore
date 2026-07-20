@@ -12,13 +12,33 @@ obj/
 .vscode/
 *.DS_Store
 
+# Claude Code local worktrees / scratch state -- machine-local, never committed
+.claude/worktrees/
+
 # Vintage Story runtime data (never commit game data or the game itself)
 VintagestoryData/
 Mods/
+
+# Third-party mod DLLs extracted from installed game mods (VSImGui/ConfigLib) for
+# Mod.csproj's <Reference> HintPaths -- no usable NuGet package exists for either at the
+# installed version, so these are vendored locally rather than restored via NuGet. See
+# openspec/changes/add-imgui-configlib-tuning/tasks.md task 1.1 for the exact source
+# .zip/version and re-extraction steps.
+src/Mod/lib/*
+!src/Mod/lib/README.md
 
 # Local env / secrets
 .env
 *.local
 
-# Screenshots: not tracked yet (curate and un-ignore selectively later)
-screenshots/
+# Screenshots: not tracked yet (curate and un-ignore selectively later). Scoped to root
+# only (leading /) so it doesn't also catch playtest-history/screenshots/ below, which is
+# meant to be committed.
+/screenshots/
+
+# Playtest checklist submissions (app lives in the separate vs-playtest-checklist repo):
+# ephemeral local reports queued for Claude to review, not meant to be committed
+.playtest-submissions/
+
+# playtest-history/ is NOT ignored -- it's a curated, committed record of promoted
+# playtest screenshots (see vs-playtest-checklist's promote_screenshot.py).

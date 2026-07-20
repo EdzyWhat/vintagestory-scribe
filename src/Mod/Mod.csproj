@@ -34,6 +34,37 @@
     </Reference>
   </ItemGroup>
 
+  <!-- ConfigLib: permanent, optional soft dependency (design.md decision in
+       add-imgui-configlib-tuning). No usable NuGet package exists for it -referenced
+       against the DLL vendored under lib/ (see lib/README.md for the source .zip/version
+       and re-extraction steps). Private=false: never copy this into our own output, same
+       reasoning as the game DLLs above - the mod loader provides it if installed. -->
+  <ItemGroup>
+    <Reference Include="configlib">
+      <HintPath>lib/configlib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- VSImGui: debug-only developer diagnostic tool, must never reach a Release build
+       (design.md decisions 1-2, add-imgui-configlib-tuning). Condition on this ItemGroup
+       itself, not just #if DEBUG at call sites, so a Release build has zero VSImGui
+       presence. Also vendored under lib/ - see lib/README.md. -->
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <Reference Include="VSImGui">
+      <HintPath>lib/VSImGui.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="VSImGui_DebugTools">
+      <HintPath>lib/VSImGui_DebugTools.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="ImGui.NET">
+      <HintPath>lib/ImGui.NET.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
   <!-- A Vintage Story mod is more than its DLL: modinfo.json and assets/ must sit alongside
        it (both when the game loads an unpacked mod folder and when Atlas stages this
        project's build output as a mod). Copy them into the build output on every build. -->

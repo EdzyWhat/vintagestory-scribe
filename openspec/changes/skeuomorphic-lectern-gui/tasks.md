@@ -90,11 +90,97 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       undermines that. Set to `0`: only rows genuinely within the visible scrolled window
       are ever composed. Accepted tradeoff: recomposes on every scroll tick rather than
       only when the visible set changes — judged acceptable since this dialog already
-      recomposes on other frequent interactions with no observed cost. Verified: clean
-      build, 35/35 Core.Tests, 12/12 Atlas Integration.Tests all still pass — this is a
-      client-GUI-only change with no server-observable behavior, so neither suite
-      exercises the fix directly; live in-game re-verification of the actual
-      overflow/scroll behavior (with the zero-buffer version) is 3.5's job.)
+      recomposes on other frequent interactions with no observed cost.
+
+      **Second correction after a submitted playtest report (2026-07-19) again showed
+      bleed-through, this time only when scrolled (not at the top of the range):** with
+      `RowListCullBuffer` already at 0, the remaining bug was that the cull test itself
+      used *overlap* (`rowBottom < windowTop || rowTop > windowBottom` → skip), not full
+      *containment* — a row that only partially intersected the visible window still got
+      composed, and (since nothing here visually clips a composed row's rendering) still
+      rendered at its full, unclipped height, tail bleeding past the dialog's bottom edge
+      by up to a full row's height. Fixed by requiring full containment instead: `rowTop <
+      windowTop || rowBottom > windowBottom` → skip. A row now only composes once
+      entirely inside the visible window. Accepted tradeoff (same shape as the
+      `RowListCullBuffer` tradeoff above): a single row taller than the visible window
+      itself can never be fully contained at any scroll position and will never render —
+      inherent to cull-don't-clip. See design.md's Decision 4 (second correction) and
+      `VSAPI-NOTES.md`'s matching entry.
+
+      **Second correction after that retest showed a NEW symptom** (a row rendering fully
+      detached above the title bar, over the chat log — user again caught this and asked
+      how the vanilla Handbook handles its own scrollable list, prompting investigation of
+      real `vssurvivalmod` source: `GuiDialogHandbook`/`GuiElementFlatList`). That
+      investigation found the Handbook uses a fundamentally different architecture —
+      one permanent `GuiElementFlatList` element that gates each item's rendering with a
+      live per-frame position check inside its own `RenderInteractiveElements`, never
+      recomposing on scroll at all. Adopting that literally for this row list was
+      evaluated and rejected: `GuiElementSwitch`/`GuiElementTextInput`/
+      `GuiElementTextArea`/`GuiElementStaticText`/`GuiElementInset` all bake their visuals
+      into the composer's shared static texture during `ComposeElements`, unlike
+      `GuiElementFlatList`'s items which draw 100% of their own appearance per-frame —
+      matching the Handbook's approach genuinely would mean reimplementing checkbox
+      rendering and, worse, text input/area editing (caret, selection, typing) from
+      scratch, a large, bug-prone undertaking for something the engine currently provides
+      for free.
+
+      Root-caused the actual detached-row symptom instead: `OnRowListScroll` was
+      recomposing `SingleComposer` *synchronously*, from inside `GuiElementScrollbar`'s own
+      `OnMouseMove`/`OnMouseWheel` — both invoked by `GuiComposer.OnMouseMove`/
+      `OnMouseWheel` while those methods are still iterating their own `interactiveElements`
+      collection. Reassigning `SingleComposer` mid-iteration corrupts that in-progress
+      dispatch. This is the exact same class of bug `textSizePendingRecompose` was already
+      written to avoid (a slider drag calling back mid-`OnMouseMove`) — generalized here to
+      a `rowListRecomposePending` flag checked once per frame in a new
+      `GuiDialogScribeLectern.OnRenderGUI` override, rather than `OnMouseUp` alone, since
+      mouse-wheel scrolling has no "mouse up" to hook. `OnRowListScroll` now only sets the
+      flag; the actual `RecomposeEditorViewPreservingFocus`/`ComposeReadView` call happens
+      outside any dispatch loop. Verified: clean build, 35/35 Core.Tests, 12/12 Atlas
+      Integration.Tests all still pass — this is a client-GUI-only change with no
+      server-observable behavior, so neither suite exercises the fix directly; live
+      in-game re-verification of the actual overflow/scroll behavior (with the deferred-
+      recompose version) is 3.5's job. The recompose-based-without-this-fix state is
+      preserved at commit `bb9eecf` for reference if this approach also needs
+      reconsidering.)
+
+      **Third correction after that retest showed a further variant of the same symptom**
+      (user report: rapidly clicking "Add Task" — before any scrollbar interaction at all
+      — produced rows bleeding onto/over the title bar; a provided screen recording
+      (`~/Desktop/V1-Scroll.mov`, frame-extracted via `cv2` for inspection) confirmed the
+      very first bad frame occurs while the scrollbar handle is still static, ruling out
+      the scrollbar as this occurrence's trigger). The `rowListRecomposePending`/
+      `OnRenderGUI` deferral only covered `OnRowListScroll`'s own recompose — every OTHER
+      button/toggle handler in this dialog (`OnClickAddTask`, `OnClickToggleToolPanel`,
+      `OnRowDelete`, `OnRowTextChanged`'s live-height recompose, `OnClickSwitchToRead`) was
+      still calling `ComposeEditorView`/`ComposeReadView`/`EnterMode` *synchronously* from
+      inside its own click callback — and `GuiElementToggleButton`/`GuiElementTextButton`/
+      `GuiElementSwitch` all fire those callbacks from `OnMouseDownOnElement`/
+      `OnMouseUpOnElement`, called by `GuiComposer.OnMouseDown`/`OnMouseUp`/`OnKeyDown`
+      while those methods are still iterating their own `interactiveElements` collection —
+      the identical reentrancy hazard already fixed for the scrollbar, just untouched on
+      every other call path. Independently corroborated by the client crash log itself
+      (`~/Library/Application Support/VintagestoryData/Logs/client-crash.log`): a
+      `GuiElementDialogBackground` blur exception with stack `OnClickAddTask` <-
+      `GuiElementToggleButton.OnMouseDownOnElement` <- `GuiComposer.OnMouseDown` — the exact
+      same class of bug, pre-dating even this GUI redesign.
+
+      Generalized the fix: `rowListRecomposePending` (bool) replaced with
+      `pendingRecomposeAction` (a deferred `System.Action?`, via a new `RequestRecompose()`
+      helper that captures the correct view), still drained once per frame in
+      `OnRenderGUI`. Every mid-dispatch-unsafe call site now calls `RequestRecompose()`
+      instead of recomposing directly: `OnClickAddTask`, `OnClickToggleToolPanel`,
+      `OnRowDelete`, `OnRowTextChanged`, `OnRowListScroll`. `OnClickSwitchToRead` assigns
+      `pendingRecomposeAction` directly (bypassing `RequestRecompose`, since that helper
+      only knows how to recompose the *current* view, but this handler also flips
+      `IsEditorMode` itself via `EnterMode`). Two call sites were confirmed safe to leave
+      as direct, synchronous calls: `OnMouseUp`'s own drag-reorder and text-size-slider
+      recomposes, both of which run *after* `base.OnMouseUp(args)` has already returned —
+      by that point the composer-level dispatch loop has finished, so there is no
+      in-progress iteration left to corrupt. Verified: clean build, 35/35 Core.Tests, 13/13
+      Atlas Integration.Tests all still pass (same as before — this remains a
+      client-GUI-only change with no server-observable behavior). Live in-game
+      re-verification (rapid Add-Task clicking, and scrolling, together) is still 3.5's
+      job.)
 - [x] 3.3 Confirm drag-reorder (`OnMouseMove`/`OnMouseUp`/`HitTestRowIndex`) still works
       correctly when the row list is scrolled away from its top position — hit-testing
       must account for scroll offset. (`HitTestRowIndex` already reads live
@@ -126,9 +212,16 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       reference the `listWidth`/`EditorListWidth` constants, not hardcoded numbers --
       confirmed via grep; they pick up the new widths automatically, no further change
       needed.)
-- [ ] 4.4 Manually test in-game: confirm the reshaped dialog reads well at the new
-      dimensions, at the vanilla lectern's typical viewing distance, before treating the
-      dimensions as final.
+- [ ] 4.4 Manually test in-game (rewritten 2026-07-19 — the original wording ("confirm
+      it reads well ... at the vanilla lectern's typical viewing distance") was flagged
+      by the user as unclear how to actually act on): place a lectern, right-click it
+      open at normal interaction range (don't back away or move closer than a normal
+      right-click requires), and check concretely: (a) the dialog fits entirely within
+      the screen with no part cut off or overlapping the hotbar/other HUD elements at
+      the default GUI scale; (b) row text at the default `TextSizeScale` is legible
+      without needing to lean in or zoom; (c) the portrait proportions (taller than
+      wide) read as intentional rather than cramped — if any of these look wrong, note
+      which one and what looked off rather than a bare pass/fail.
 
 ## 5. Custom-drawn backdrop
 

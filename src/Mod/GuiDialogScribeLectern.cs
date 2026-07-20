@@ -1,4 +1,3 @@
-using System.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -61,28 +60,90 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         // Clamp a pre-existing saved value down to the current cap -- a config saved before
         // MaxTextSizePercent was introduced (or before it was lowered) could exceed it.
-        clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, 0.5f, MaxTextSizePercent / 100f);
+        clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, 0.5f, clientConfig.MaxTextSizePercent / 100f);
 
         if (IsDuplicate) return;
 
         EnterMode(isEditorMode, documentBytes);
+
+#if DEBUG
+        RegisterDebugSliders();
+#endif
     }
+
+#if DEBUG
+    /// <summary>Debug-only (see add-imgui-configlib-tuning design.md decisions 1-2 --
+    /// excluded from Release builds by <c>Mod.csproj</c>'s Condition on the VSImGui
+    /// <c>ItemGroup</c>, not just this preprocessor guard) live-tuning sliders for the
+    /// row-list layout fields most relevant to diagnosing rendering issues. Each
+    /// <c>FloatSlider</c> call registers a persistent entry drawn automatically by
+    /// VSImGui's own always-on debug-window handler (confirmed via decompile -- no manual
+    /// per-frame draw call or event subscription needed here); the returned ids are
+    /// tracked so <see cref="OnGuiClosed"/> can remove them via
+    /// <see cref="VSImGui.Debug.DebugWidgets.Remove"/>, since a closed dialog's
+    /// <c>clientConfig</c> instance would otherwise leave stale getter/setter closures
+    /// registered against a dialog that no longer exists.</summary>
+    private readonly System.Collections.Generic.List<int> debugSliderIds = new();
+
+    private const string DebugDomain = "scribe";
+    private const string DebugCategory = "Lectern Layout";
+
+    private void RegisterDebugSliders()
+    {
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Visible List Height", 100f, 1000f,
+            () => (float)clientConfig.VisibleListHeight,
+            value => { clientConfig.VisibleListHeight = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Row Spacing", 0f, 60f,
+            () => (float)clientConfig.RowSpacing,
+            value => { clientConfig.RowSpacing = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Top Content Gap", 0f, 100f,
+            () => (float)clientConfig.TopContentGap,
+            value => { clientConfig.TopContentGap = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Read List Width", 100f, 800f,
+            () => (float)clientConfig.ReadListWidth,
+            value => { clientConfig.ReadListWidth = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Editor List Width", 100f, 800f,
+            () => (float)clientConfig.EditorListWidth,
+            value => { clientConfig.EditorListWidth = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Row Divider Thickness", 0f, 10f,
+            () => (float)clientConfig.RowDividerThickness,
+            value => { clientConfig.RowDividerThickness = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
+            DebugDomain, DebugCategory, "Row Divider Brightness", 0f, 1f,
+            () => clientConfig.RowDividerBrightness,
+            value => { clientConfig.RowDividerBrightness = value; RequestRecompose(); }));
+
+        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.Button(DebugDomain, DebugCategory,
+            "Save to scribe-client-config.json",
+            () => capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName)));
+    }
+
+    private void UnregisterDebugSliders()
+    {
+        foreach (int id in debugSliderIds)
+        {
+            VSImGui.Debug.DebugWidgets.Remove(DebugDomain, id);
+        }
+        debugSliderIds.Clear();
+    }
+#endif
 
     private CairoFont RowFont() =>
         CairoFont.TextInput().WithFontSize((float)(GuiStyle.NormalFontSize * clientConfig.TextSizeScale));
 
     private int TextSizePercent => (int)System.Math.Round(clientConfig.TextSizeScale * 100);
-
-    /// <summary>Upper bound for the text-size slider. Raised now that the row list scrolls
-    /// within a fixed-height clipped region (see <see cref="VisibleListHeight"/>) -- the
-    /// original overflow-off-screen problem this guarded against is handled by scrolling
-    /// instead, so this is now a looser sanity bound rather than a tight stopgap.</summary>
-    private const int MaxTextSizePercent = 300;
-
-    /// <summary>Fixed viewport height (unscaled) for the scrollable row-list region, shared by
-    /// both views. Provisional -- the portrait reshape (tasks.md group 4) will revisit this
-    /// alongside the dialog's overall dimensions.</summary>
-    private const double VisibleListHeight = 400;
 
     /// <summary>The row list's content bounds (the single element every row is parented under)
     /// for whichever view is currently composed -- <see cref="OnRowListScroll"/> shifts this on
@@ -135,6 +196,41 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// with no observed cost.</summary>
     private const double RowListCullBuffer = 0;
 
+    /// <summary>Set by any callback that determines a recompose is needed, but must not act on
+    /// it synchronously -- drained on the next <see cref="OnRenderGUI"/> tick instead. Every
+    /// button/toggle/switch click handler in this dialog (<c>GuiElementToggleButton</c>,
+    /// <c>GuiElementTextButton</c>, <c>GuiElementSwitch</c>) fires its callback from inside
+    /// <c>OnMouseDownOnElement</c>/<c>OnMouseUpOnElement</c>, which <c>GuiComposer</c> calls from
+    /// its own <c>OnMouseDown</c>/<c>OnMouseUp</c>/<c>OnKeyDown</c> while those methods are still
+    /// iterating their own <c>interactiveElements</c> collection -- tearing down and replacing
+    /// <c>SingleComposer</c> mid-iteration corrupts that in-progress dispatch. Confirmed two ways:
+    /// live (a row rendered detached above the title bar, from a build that recomposed
+    /// synchronously from the scrollbar's scroll callback) and via the client crash log itself
+    /// (a <c>GuiElementDialogBackground</c> blur exception with stack
+    /// <c>OnClickAddTask</c> &lt;- <c>GuiElementToggleButton.OnMouseDownOnElement</c> &lt;-
+    /// <c>GuiComposer.OnMouseDown</c> -- the exact same reentrancy class, via the Add Task button
+    /// rather than the scrollbar). Originally scoped to just the scrollbar's callback
+    /// (<c>rowListRecomposePending</c>); generalized to every mid-dispatch recompose site
+    /// (<see cref="OnClickAddTask"/>, <see cref="OnClickToggleToolPanel"/>,
+    /// <see cref="OnRowDelete"/>, <see cref="OnRowTextChanged"/>, <see cref="OnClickSwitchToRead"/>)
+    /// once each was found to share the identical hazard. Mirrors
+    /// <see cref="textSizePendingRecompose"/>'s existing, already-proven defer-to-next-safe-point
+    /// pattern for the same class of problem, generalized to <c>OnRenderGUI</c> rather than
+    /// <c>OnMouseUp</c> alone since mouse-wheel scrolling (and most of these button clicks) have
+    /// no "mouse up" to hook that fires after the dispatch loop completes. NOT used by the two
+    /// call sites inside this dialog's own <see cref="OnMouseUp"/> override (drag-reorder,
+    /// text-size-slider) -- those run AFTER <c>base.OnMouseUp(args)</c> has already returned, so
+    /// the composer-level dispatch loop has already finished and a direct, synchronous recompose
+    /// there is provably safe.</summary>
+    private System.Action? pendingRecomposeAction;
+
+    private void RequestRecompose()
+    {
+        pendingRecomposeAction = IsEditorMode
+            ? RecomposeEditorViewPreservingFocus
+            : ComposeReadView;
+    }
+
     private void OnRowListScroll(float value)
     {
         if (rowListContentBounds is null || isComposingRowList) return;
@@ -144,12 +240,22 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         rowListContentBounds.CalcWorldBounds();
 
         double viewportTop = value;
-        double viewportBottom = value + VisibleListHeight;
+        double viewportBottom = value + clientConfig.VisibleListHeight;
         if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
         {
-            if (IsEditorMode) RecomposeEditorViewPreservingFocus();
-            else ComposeReadView();
+            RequestRecompose();
         }
+    }
+
+    public override void OnRenderGUI(float deltaTime)
+    {
+        if (pendingRecomposeAction is { } action)
+        {
+            pendingRecomposeAction = null;
+            action();
+        }
+
+        base.OnRenderGUI(deltaTime);
     }
 
     /// <summary>Set while a text-size drag is pending a recompose (see <see cref="OnMouseUp"/>).
@@ -184,6 +290,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         draggedBlockIndex = null;
         hoverTargetIndex = null;
         rowListScrollValue = 0;
+        pendingRecomposeAction = null;
 
         if (editorMode)
         {
@@ -224,42 +331,26 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// same swappability, less code.</summary>
     private static readonly AssetLocation BackdropTexture = new("scribe:textures/gui/lecternbackdrop.png");
 
-    /// <summary>Vertical gap between the title bar and the first row -- the title bar takes no
-    /// space of its own within <c>BeginChildElements</c>, so content starting at y=0 renders
-    /// flush against it. Shared by both views, so a single bump here fixes the gap everywhere
-    /// the row stack starts.</summary>
-    private const double TopContentGap = 20;
-
-    /// <summary>Vertical gap between rows in the scrollable list, shared by both views.
-    /// Widened from the original tight 6px stacking toward the Slack reference's airier
-    /// spacing (design.md's row-list restyle goal); a thin divider is centered in this gap
-    /// via <see cref="AddRowDivider"/>.</summary>
-    private const double RowSpacing = 14;
-
     /// <summary>Adds a subtle horizontal divider centered in the gap below a row, using the
     /// engine's own embossed-inset primitive (<c>AddInset</c>) rather than a hand-rolled Cairo
-    /// draw -- a thin (2px) inset reads as a faint separator line, matching the Slack
-    /// reference's light row dividers without inventing new rendering code.</summary>
+    /// draw -- a thin inset reads as a faint separator line, matching the Slack reference's
+    /// light row dividers without inventing new rendering code. Thickness/brightness/the
+    /// enclosing gap size are all config knobs (<see cref="ScribeClientConfig.RowSpacing"/>
+    /// etc.) so the divider's look can be re-tuned without a rebuild.</summary>
     private void AddRowDivider(double y, double width)
     {
-        var dividerBounds = ElementBounds.Fixed(0, y + RowSpacing / 2 - 1, width, 2);
-        SingleComposer.AddInset(dividerBounds, depth: 1, brightness: 0.85f);
+        var dividerBounds = ElementBounds.Fixed(0, y + clientConfig.RowSpacing / 2 - clientConfig.RowDividerThickness / 2, width, clientConfig.RowDividerThickness);
+        SingleComposer.AddInset(dividerBounds, depth: 1, brightness: clientConfig.RowDividerBrightness);
     }
 
     // ---------------- Read view ----------------
 
-    /// <summary>Read-view row-list width. Narrowed from the original wide (480px) layout as
-    /// part of the portrait reshape -- paired with <see cref="VisibleListHeight"/>'s fixed
-    /// height, this makes the dialog read as taller-than-wide ("phone held vertically") per
-    /// design.md decision 1, rather than the original short/wide panel.</summary>
-    private const double ReadListWidth = 300;
-
     private void ComposeReadView()
     {
         var blocks = lectern.Document.Blocks;
-        double rowSpacing = RowSpacing;
-        double listWidth = ReadListWidth;
-        double y = TopContentGap;
+        double rowSpacing = clientConfig.RowSpacing;
+        double listWidth = clientConfig.ReadListWidth;
+        double y = clientConfig.TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
@@ -280,7 +371,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 ? (block.Done ? "[x] " : "[ ] ") + block.Text
                 : block.Text;
 
-            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
+            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
             rowYs[i] = contentY;
             rowHeights[i] = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), listWidth, minHeight);
             contentY += rowHeights[i] + rowSpacing;
@@ -289,16 +380,16 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         double hintHeight = 0;
         if (blocks.Count == 0)
         {
-            hintHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, Lang.Get("scribe:scribe-gui-edit-hint"), RowFont(), listWidth, 30);
+            hintHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, Lang.Get("scribe:scribe-gui-edit-hint"), RowFont(), listWidth, clientConfig.ControlRowHeight);
             contentY = hintHeight + rowSpacing;
         }
 
         // Clamp against the just-measured real content height before computing the culled
         // window below, so a document that shrank (e.g. rows deleted) while scrolled down
         // doesn't request a window past the end of the new, shorter content.
-        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - VisibleListHeight));
+        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - clientConfig.VisibleListHeight));
         double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
-        double windowBottom = rowListScrollValue + VisibleListHeight + RowListCullBuffer;
+        double windowBottom = rowListScrollValue + clientConfig.VisibleListHeight + RowListCullBuffer;
 
         // The row list lives inside a fixed-height clipped region so a long document scrolls
         // instead of growing the dialog (and, before this, running off the bottom of the
@@ -311,7 +402,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // BeginClip/PushScissor does NOT, however, visually clip this row list's rendering (see
         // RowListCullBuffer's doc comment) -- pass 2 below only adds rows within the buffered
         // window instead of relying on the engine's scissor to hide the rest.
-        var clipBounds = ElementBounds.Fixed(0, y, listWidth, VisibleListHeight);
+        var clipBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.VisibleListHeight);
         var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
         var contentBounds = ElementBounds.Fixed(0, 0, listWidth, contentY);
 
@@ -322,14 +413,23 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .BeginClip(clipBounds)
                 .BeginChildElements(contentBounds);
 
-        // Pass 2: only add rows (and their dividers) whose measured position overlaps the
-        // buffered window -- this is the actual culling; everything outside is never composed at
-        // all rather than composed-and-hidden.
+        // Pass 2: only add rows (and their dividers) FULLY CONTAINED within the buffered
+        // window -- this is the actual culling; everything outside is never composed at all
+        // rather than composed-and-hidden. Full containment, not mere overlap: nothing here
+        // visually clips a composed row's rendering (see RowListCullBuffer's doc comment), so
+        // a row that only partially overlaps the window would still render at its full,
+        // unclipped height -- its portion outside the window bleeding straight past the
+        // dialog's drawn frame with nothing to stop it. Confirmed live: with the prior
+        // any-overlap test, scrolling to a position where a row straddled windowBottom made
+        // that row's tail (up to a full row's height) render past the dialog's bottom edge.
+        // Excluding a straddling row entirely (rather than drawing it clipped) is correct
+        // given culling, not clipping, is what hides overflow -- the row simply pops in once
+        // it scrolls fully into view.
         for (int i = 0; i < blocks.Count; i++)
         {
             double rowTop = rowYs[i];
             double rowBottom = rowTop + rowHeights[i];
-            if (rowBottom < windowTop || rowTop > windowBottom) continue;
+            if (rowTop < windowTop || rowBottom > windowBottom) continue;
 
             var block = blocks[i];
             string text = block.IsTask
@@ -355,9 +455,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .EndClip()
             .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
 
-        y += VisibleListHeight + rowSpacing;
+        y += clientConfig.VisibleListHeight + rowSpacing;
 
-        var switchBounds = ElementBounds.Fixed(0, y, listWidth, 30);
+        var switchBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.ControlRowHeight);
         SingleComposer.AddSmallButton(Lang.Get("scribe:scribe-gui-switch-to-editor"), OnClickSwitchToEditor, switchBounds, key: "switchModeButton");
 
         SingleComposer.EndChildElements().Compose();
@@ -370,7 +470,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // (no callback re-entrancy) and contentBounds' own fixedY.
         isComposingRowList = true;
         var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
-        scrollbar.SetHeights((float)VisibleListHeight, (float)System.Math.Max(VisibleListHeight, contentY));
+        scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
         contentBounds.fixedY = 0 - rowListScrollValue;
         contentBounds.CalcWorldBounds();
@@ -391,20 +491,13 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     // ---------------- Editor view ----------------
 
-    /// <summary>Editor-view row-list width. Narrowed from the original wide (540px) layout as
-    /// part of the portrait reshape -- see <see cref="ReadListWidth"/>'s doc comment for why.
-    /// Slightly wider than the read view to leave room for the drag handle/checkbox/delete
-    /// icon gutters `ScribeBlockRowCell` reserves that the read view's plain static text
-    /// doesn't need.</summary>
-    private const double EditorListWidth = 340;
-
     private void ComposeEditorView()
     {
         if (scratchDocument is null) return;
 
-        double rowSpacing = RowSpacing;
-        double listWidth = EditorListWidth;
-        double y = TopContentGap;
+        double rowSpacing = clientConfig.RowSpacing;
+        double listWidth = clientConfig.EditorListWidth;
+        double y = clientConfig.TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
@@ -426,7 +519,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         for (int i = 0; i < blocks.Count; i++)
         {
             var block = blocks[i];
-            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
+            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
 
             // Task rows (GuiElementTextInput) are single-line by design and never wrap, so the
             // fixed height is correct as-is. Text-section rows (GuiElementTextArea) DO wrap and
@@ -441,7 +534,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             double rowHeight = minHeight;
             if (!block.IsTask)
             {
-                double textWidth = ScribeBlockRowCell.TextWidth(listWidth, isTask: false, showDragHandle: true);
+                double textWidth = ScribeBlockRowCell.TextWidth(listWidth, isTask: false, showDragHandle: true, clientConfig);
                 rowHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, block.Text, RowFont(), textWidth, minHeight);
                 composedNoteRowHeights[i] = rowHeight;
             }
@@ -451,11 +544,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             contentY += rowHeight + rowSpacing;
         }
 
-        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - VisibleListHeight));
+        rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - clientConfig.VisibleListHeight));
         double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
-        double windowBottom = rowListScrollValue + VisibleListHeight + RowListCullBuffer;
+        double windowBottom = rowListScrollValue + clientConfig.VisibleListHeight + RowListCullBuffer;
 
-        var clipBounds = ElementBounds.Fixed(0, y, listWidth, VisibleListHeight);
+        var clipBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.VisibleListHeight);
         var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
         var contentBounds = ElementBounds.Fixed(0, 0, listWidth, contentY);
 
@@ -466,17 +559,24 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .BeginClip(clipBounds)
                 .BeginChildElements(contentBounds);
 
-        // Pass 2: only compose rows (and their dividers) whose measured position overlaps the
-        // buffered window. rowListComposedFirstIndex/LastIndex record the actual composed range
-        // so ApplyValues (below) and HitTestRowIndex (drag-reorder) know which indices have live
-        // elements -- an index outside this range was never added to the composer this pass.
+        // Pass 2: only compose rows (and their dividers) FULLY CONTAINED within the buffered
+        // window -- see the matching comment in ComposeReadView for why full containment
+        // (not mere overlap) is required now that nothing here visually clips a composed
+        // row's rendering. rowListComposedFirstIndex/LastIndex record the actual composed
+        // range so ApplyValues (below) and HitTestRowIndex (drag-reorder) know which indices
+        // have live elements -- an index outside this range was never added to the composer
+        // this pass. Note: a single row taller than VisibleListHeight itself (an unusually
+        // long note at a large text-size scale) can never be fully contained at any scroll
+        // position and will never render -- an inherent limit of cull-don't-clip, not
+        // something this pass introduces; showing it would need real clipping, which is
+        // confirmed unavailable here (see RowListCullBuffer's doc comment).
         rowListComposedFirstIndex = -1;
         rowListComposedLastIndex = -1;
         for (int i = 0; i < blocks.Count; i++)
         {
             double rowTop = rowYs[i];
             double rowBottom = rowTop + rowHeights[i];
-            if (rowBottom < windowTop || rowTop > windowBottom) continue;
+            if (rowTop < windowTop || rowBottom > windowBottom) continue;
 
             var rowBounds = ElementBounds.Fixed(0, rowTop, listWidth, rowHeights[i]);
 
@@ -490,9 +590,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 OnRowToggle,
                 OnRowTextChanged,
                 OnRowDelete,
+                clientConfig,
                 OnRowDragMouseDown,
                 OnRowDragMouseUp,
-                textSizeScale: clientConfig.TextSizeScale,
                 onTogglePin: OnRowTogglePin);
 
             if (i < blocks.Count - 1) AddRowDivider(rowBottom, listWidth);
@@ -510,34 +610,35 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .EndClip()
             .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
 
-        y += VisibleListHeight + 6;
-        SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, 110, 30));
-        SingleComposer.AddSlider(OnTextSizeSliderChanged, ElementBounds.Fixed(115, y, listWidth - 115, 30), key: "textSizeSlider");
-        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, MaxTextSizePercent, 10, "%");
-        y += 38;
+        y += clientConfig.VisibleListHeight + clientConfig.ListToControlsGap;
+        SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, clientConfig.TextSizeLabelWidth, clientConfig.ControlRowHeight));
+        double sliderX = clientConfig.TextSizeLabelWidth + clientConfig.TextSizeLabelToSliderGap;
+        SingleComposer.AddSlider(OnTextSizeSliderChanged, ElementBounds.Fixed(sliderX, y, listWidth - sliderX, clientConfig.ControlRowHeight), key: "textSizeSlider");
+        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, clientConfig.MaxTextSizePercent, 10, "%");
+        y += clientConfig.ControlRowGap;
 
-        var toolPanelToggleBounds = ElementBounds.Fixed(0, y, 140, 30);
+        var toolPanelToggleBounds = ElementBounds.Fixed(0, y, clientConfig.ToolPanelToggleWidth, clientConfig.ControlRowHeight);
         string collapseLangKey = isToolPanelExpanded ? "scribe:scribe-gui-collapse" : "scribe:scribe-gui-expand";
         SingleComposer.AddSmallButton(Lang.Get(collapseLangKey), OnClickToggleToolPanel, toolPanelToggleBounds, key: "toolPanelToggleButton");
-        y += 38;
+        y += clientConfig.ControlRowGap;
 
         if (isToolPanelExpanded)
         {
             double optionX = 0;
             foreach (var option in ToolbarOptions())
             {
-                var optionBounds = ElementBounds.Fixed(optionX, y, 36, 32);
+                var optionBounds = ElementBounds.Fixed(optionX, y, clientConfig.ToolbarIconWidth, clientConfig.ToolbarIconHeight);
                 SingleComposer.AddIf(option.IsVisible());
                 SingleComposer.AddIconButton(option.Icon, _ => option.OnActivate(), optionBounds, key: option.Key);
-                SingleComposer.AddHoverText(Lang.Get(option.LangKey), CairoFont.WhiteSmallText(), 150, optionBounds.FlatCopy());
+                SingleComposer.AddHoverText(Lang.Get(option.LangKey), CairoFont.WhiteSmallText(), (int)clientConfig.HoverTextWidth, optionBounds.FlatCopy());
                 SingleComposer.EndIf();
-                optionX += 42;
+                optionX += clientConfig.ToolbarIconSpacing;
             }
 
-            y += 38;
+            y += clientConfig.ControlRowGap;
         }
 
-        var switchBounds = ElementBounds.Fixed(0, y, 180, 30);
+        var switchBounds = ElementBounds.Fixed(0, y, clientConfig.SwitchButtonWidth, clientConfig.ControlRowHeight);
         SingleComposer.AddSmallButton(Lang.Get("scribe:scribe-gui-switch-to-read"), OnClickSwitchToRead, switchBounds, key: "switchModeButton");
 
         SingleComposer.EndChildElements().Compose();
@@ -547,7 +648,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // call.
         isComposingRowList = true;
         var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
-        scrollbar.SetHeights((float)VisibleListHeight, (float)System.Math.Max(VisibleListHeight, contentY));
+        scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
         contentBounds.fixedY = 0 - rowListScrollValue;
         contentBounds.CalcWorldBounds();
@@ -573,7 +674,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private bool OnClickToggleToolPanel()
     {
         isToolPanelExpanded = !isToolPanelExpanded;
-        ComposeEditorView();
+        RequestRecompose();
         return true;
     }
 
@@ -602,13 +703,13 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         var block = scratchDocument?.Blocks[index];
         if (block is null || block.IsTask) return;
 
-        double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig.TextSizeScale);
-        double textWidth = ScribeBlockRowCell.TextWidth(EditorListWidth, isTask: false, showDragHandle: true);
+        double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
+        double textWidth = ScribeBlockRowCell.TextWidth(clientConfig.EditorListWidth, isTask: false, showDragHandle: true, clientConfig);
         double newHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), textWidth, minHeight);
 
         if (composedNoteRowHeights.TryGetValue(index, out double composedHeight) && newHeight != composedHeight)
         {
-            RecomposeEditorViewPreservingFocus();
+            RequestRecompose();
         }
     }
 
@@ -665,14 +766,14 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         scratchDocument?.DeleteBlock(index);
         isDirty = true;
-        ComposeEditorView();
+        RequestRecompose();
     }
 
     private bool OnClickAddTask()
     {
         scratchDocument?.AddTask(Lang.Get("scribe:scribe-gui-newtask-placeholder"));
         isDirty = true;
-        ComposeEditorView();
+        RequestRecompose();
         return true;
     }
 
@@ -683,7 +784,13 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // silently rejected by ApplyEdit's lock check.
         FlushIfDirty();
         SendReleaseLockPacket();
-        EnterMode(false, null);
+
+        // EnterMode ends in a Compose call, so it shares the same mid-dispatch hazard as every
+        // other button handler here (see pendingRecomposeAction's doc comment) -- this button's
+        // own OnMouseUpOnElement fires it from inside GuiComposer.OnMouseUp's dispatch loop.
+        // Deferred as a raw action (not via RequestRecompose, which only knows how to recompose
+        // the CURRENT view) since this call also flips IsEditorMode itself.
+        pendingRecomposeAction = () => EnterMode(false, null);
         return true;
     }
 
@@ -845,6 +952,10 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         }
 
         StopAutosaveTick();
+
+#if DEBUG
+        UnregisterDebugSliders();
+#endif
     }
 
     private void OnTitleBarClose()

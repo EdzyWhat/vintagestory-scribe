@@ -120,6 +120,26 @@ scrolled window, recomposing on scroll — rather than relying on the engine's s
 visual correctness. `BeginClip`/`AddVerticalScrollbar` may still be used for the scrollbar
 control itself and its drag/value plumbing, just not trusted to clip rendered content.
 
+**Second correction (confirmed live during playtesting, 2026-07-19): the cull test itself
+must require full containment, not mere overlap.** The first correction above replaced
+clipping with culling but the actual implementation (`ComposeReadView`/
+`ComposeEditorView`'s pass 2) kept an *overlap* test (`rowBottom < windowTop || rowTop >
+windowBottom` → skip), i.e. it still composed any row that partially intersected the
+visible window. Since nothing here visually clips a composed row's rendering (per the
+first correction), a row that only partially overlaps the window still renders at its
+full, unclipped height — the portion outside the window bleeds straight past the dialog's
+drawn frame. Reported by the user via the playtest-checklist app: scrolling down (not at
+the very top, where the test document happened not to have a straddling row) made one
+row's tail render ~30px below the dialog's bottom edge — coincidentally close to a task
+row's own height, not related to the title bar as first suspected. Fixed by changing the
+test to require full containment (`rowTop < windowTop || rowBottom > windowBottom` →
+skip): a row now only composes once it's entirely inside the visible window, and simply
+pops in/out at the boundary rather than rendering partially. Accepted tradeoff: a single
+row taller than `VisibleListHeight` itself can never be fully contained at any scroll
+position and will never render — inherent to cull-don't-clip, not fixable without real
+clipping (confirmed unavailable). See `GuiDialogScribeLectern.cs`'s pass-2 comments and
+`VSAPI-NOTES.md`'s matching entry.
+
 **5. Checkbox scaling: pass a computed `size` to `AddSwitch`, reusing the same scale
 factor `RowHeight` already applies — no new mechanism.**
 `GuiElementSwitch`'s constructor already accepts a `size` parameter (default 30,
