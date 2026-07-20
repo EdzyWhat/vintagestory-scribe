@@ -141,9 +141,10 @@ missed the first time.
 
 ## Open Questions
 
-- **Needs explicit sign-off, not a default:** is the last-write-wins race accepted in
-  Decision 2 (Read-view toggle racing an in-flight Editor-mode autosave) acceptable as
-  described, or does it need a stronger guarantee (e.g. reject a Read-view toggle if the
-  document was dirtied by an Editor session within some short window)? This design
-  recommends accepting it as-is (see Decision 2's rationale) but flags it for explicit
-  confirmation before task breakdown proceeds.
+- **RESOLVED 2026-07-20 — accepted as-is.** The last-write-wins race in Decision 2
+  (Read-view toggle racing an in-flight Editor-mode autosave) was flagged for explicit
+  sign-off; the user accepted it as described, with no stronger guarantee required. The
+  Read-view toggle stays lock-free and applies directly to the authoritative document.
+  Accepted worst case: a single lost toggle/edit under a same-tick collision — no
+  corruption, and no worse than two uncoordinated editors without a lock. Recorded on
+  task 1.1.

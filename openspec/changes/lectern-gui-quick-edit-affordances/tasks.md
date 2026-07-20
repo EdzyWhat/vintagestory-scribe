@@ -1,10 +1,15 @@
 ## 1. Sign-off on the accepted race (blocks everything else)
 
-- [ ] 1.1 Confirm with the user whether design.md's Decision 2 (Read-view toggle applies
+- [x] 1.1 Confirm with the user whether design.md's Decision 2 (Read-view toggle applies
       directly to the authoritative `Document`, no lock acquisition, accepting a
       last-write-wins race against an in-flight Editor-mode edit) is acceptable as
       described, or needs a stronger guarantee first. Do not proceed past this task
       until answered — it's a real design tradeoff, not an implementation detail.
+      (**Accepted as-described by the user, 2026-07-20.** Read-view toggle stays
+      lock-free and applies directly to the authoritative document; the accepted worst
+      case is a single lost toggle/edit under a same-tick collision with an Editor-mode
+      autosave — no corruption. No stronger guarantee required. Design.md's Open
+      Question resolved accordingly.)
 
 ## 2. Core: no changes expected, confirm the assumption
 
