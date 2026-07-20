@@ -177,6 +177,62 @@ clipping (confirmed unavailable, see the entry above) to fix. See
 
 ---
 
+**Symptom: scrolling a hand-stacked row list (parent `fixedY = 0 - scrollValue` +
+`CalcWorldBounds()`) moves some parts of a row but not others. An all-static list (read
+view) doesn't visually move at all on scroll — rows just cull in/out in place. A mixed
+static+interactive list (editor view) scrolls the interactive parts but leaves the static
+parts frozen: text-input content moves, but its border stays; the checkbox's check +
+highlight move, but the box outline stays; a static drag glyph stays. The frozen widgets
+are still fully clickable/typable where they landed after scroll.**
+
+VS renders GUI elements in TWO passes with TWO different Y coordinates, and a parent
+`fixedY` shift only reaches ONE of them. Confirmed via `ElementBounds` decompile:
+- **Static pass** — `GuiElement.ComposeElements(Context ctxStatic, ...)`, baked ONCE into
+  a cached texture at compose time — draws at **`bgDrawY`/`drawY`**:
+  `bgDrawY = absFixedY + absMarginY + absOffsetY + ParentBounds.drawY`. No scroll term; the
+  texture is not re-baked on scroll.
+- **Interactive pass** — `RenderInteractiveElements(float dt)`, redrawn EVERY frame —
+  draws at **`renderY`**: `renderY = absFixedY + ... + ParentBounds.renderY +
+  renderOffsetY`. This DOES pick up the shifted parent.
+
+So shifting the content parent's `fixedY` moves `renderY` (live pass) but not the
+already-baked static texture (`drawY`). Which elements sit in which pass:
+`AddStaticText`/`AddInset` dividers are wholly static (→ read view rows don't move at all).
+`GuiElementTextInput`/`GuiElementTextArea` draw their *text content* in the interactive
+pass but their *border/background* in `ComposeElements`; `GuiElementSwitch` draws its box
+outline in `ComposeElements` (`RoundRectangle`/`EmbossRoundRectangleElement`) but the
+check + hover highlight in `RenderInteractiveElements` (→ editor view: text/check move,
+box/border don't).
+
+This is the same underlying static/interactive split as the "BeginClip doesn't visually
+clip" entry above — that one is the *clip* half, this is the *scroll-shift* half.
+
+**Fix pattern:** don't rely on shifting the parent `fixedY` to scroll a hand-stacked
+static+interactive list. Position each row at a **viewport-relative Y** at compose time
+(`rowY - scrollValue`) so BOTH passes bake at the already-scrolled coordinate. Combine
+with viewport culling (rows outside the window aren't composed at all) exactly as the
+entries above require. See `GuiDialogScribeLectern.ComposeReadView`/`ComposeEditorView`.
+
+---
+
+**Symptom: dragging a `GuiElementScrollbar` (or `AddSlider`) thumb moves it one step/pixel
+then the drag dies; mouse-wheel and track-clicks work fine.**
+
+A sustained drag gesture is being interrupted by a mid-gesture recompose. If the value-
+change callback (`OnRowListScroll` / a slider's `onChanged`) rebuilds `SingleComposer`,
+the freshly composed scrollbar/slider is a BRAND-NEW element that never received the
+mouse-down, so the drag is orphaned after one step. One-shot inputs (wheel, track-click)
+survive because they don't rely on a held gesture spanning frames.
+
+**Fix pattern:** defer the recompose out of the drag. Update the cheap live state
+(`scrollValue`, `contentBounds.fixedY`, `CalcWorldBounds()`) during the drag, but set a
+"pending recompose" flag and actually rebuild in `OnMouseUp` instead of inside the change
+callback. This dialog already does exactly this for its text-size slider
+(`textSizePendingRecompose`, drained in `OnMouseUp`) — mirror it for the scrollbar. See
+`GuiDialogScribeLectern.OnTextSizeSliderChanged`/`OnMouseUp`.
+
+---
+
 **Gotcha (engine inconsistency, not yet hit but worth flagging): `GuiElementTextArea`'s own
 wrap-height write skips a GUIScale division that `GuiElementDynamicText`/
 `GuiElementTextBase` both apply for the same operation.** `GuiElementTextArea.TextChanged()`

@@ -24,7 +24,11 @@
   Debug or Release. Defaults to Release.
 
 .EXAMPLE
-  pwsh build/restage.ps1 -Configuration Debug
+  # From the repo root, in a PowerShell window (Windows PowerShell 5.1 or PowerShell 7):
+  .\build\restage.ps1 -Configuration Debug
+
+  # If blocked by execution policy, unblock for this session only, then re-run:
+  #   Set-ExecutionPolicy -Scope Process Bypass
 #>
 [CmdletBinding()]
 param(

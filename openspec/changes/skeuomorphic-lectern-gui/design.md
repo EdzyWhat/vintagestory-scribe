@@ -140,6 +140,51 @@ position and will never render — inherent to cull-don't-clip, not fixable with
 clipping (confirmed unavailable). See `GuiDialogScribeLectern.cs`'s pass-2 comments and
 `VSAPI-NOTES.md`'s matching entry.
 
+**Third correction (confirmed live on Windows via the VSImGui slider tool, 2026-07-19):
+scrolling does not visually move composed rows — the current `contentBounds.fixedY =
+0 - scrollValue` shift only reaches the interactive render pass, not the static compose
+pass, so the whole "cull + shift the parent" model is only half-working.** This is the
+root cause beneath two symptoms that had been treated as separate:
+
+- *Read view (rows are 100% static `AddStaticText`):* on scroll, rows do not move at all;
+  only the culling window advances. Row 1 vanishes in place, later rows stay put, and a
+  lower row appears at its true (off-window) Y — even below the dialog frame. It looks
+  like "the box that decides what's shown moves, but the content is nailed down."
+- *Editor view (rows are a static + interactive mix):* the interactive parts scroll
+  correctly (text-input/textarea *content*, the checkbox's blue check + active-field
+  highlight, hover pin/delete icons) while the static parts stay frozen and drift out of
+  place (the text-box *border*, the checkbox's box outline drawn by
+  `GuiElementSwitch.ComposeElements`, the drag-handle glyph). The frozen widgets remain
+  fully clickable/typable at their scrolled position — hence "I can click the blank spot
+  where the checkbox border should be and the blue check appears on empty background."
+  This also explains the earlier "only the last row renders full chrome" observation: it
+  was never about the last row specifically — static chrome is frozen at wherever it was
+  baked, which only lines up with the text near the unscrolled boundary.
+
+*Mechanism (confirmed via `ElementBounds` decompile):* VS draws GUI elements in two
+passes with two different Y coordinates. The static pass (`ComposeElements`, baked once
+into a cached texture) uses `bgDrawY`/`drawY`, which has **no scroll term**. The
+interactive pass (`RenderInteractiveElements`, redrawn every frame) uses `renderY`, which
+includes `ParentBounds.renderY` and so **does** pick up the parent `fixedY` shift. Our
+scroll shifts the parent's `fixedY` and recalculates world bounds, moving `renderY` but
+not the already-baked static texture. Read view is all-static → nothing moves; editor
+view is mixed → text moves, chrome doesn't. *Revised mechanism (proposed, pending
+implementation):* stop relying on the parent-offset shift entirely; in pass 2, position
+each composed row at a **viewport-relative Y** (`rowY - scrollValue`) so both passes bake
+at the already-shifted coordinate. This composes with the existing cull (rows outside the
+window still aren't added) and needs no `fixedY` parent trickery. See `VSAPI-NOTES.md`'s
+"static vs interactive render pass" entry.
+
+**Fourth correction (same session): dragging the scrollbar thumb moves it ~1px then
+dies, in both views** — a distinct bug from the three above, same class as the
+already-fixed text-size-slider drag bug. `OnRowListScroll` calls `RequestRecompose()` the
+moment the viewport escapes the composed range; that rebuilds `SingleComposer` including a
+brand-new scrollbar element that never saw the mouse-down, orphaning the in-progress drag
+after one step. Mouse-wheel and track-clicks survive because they are one-shot events, not
+sustained gestures. Fix follows the existing `textSizePendingRecompose` template: while
+the thumb is held, update `scrollValue`/`fixedY` live but defer the cull-triggered
+recompose to `OnMouseUp` instead of firing it mid-drag.
+
 **5. Checkbox scaling: pass a computed `size` to `AddSwitch`, reusing the same scale
 factor `RowHeight` already applies — no new mechanism.**
 `GuiElementSwitch`'s constructor already accepts a `size` parameter (default 30,
