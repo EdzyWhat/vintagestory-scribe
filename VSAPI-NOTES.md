@@ -209,6 +209,47 @@ must use `"<modid>:<key>"`, e.g. `Lang.Get("scribe:scribe-gui-title")`. Don't fo
 **Diagnostic shortcut for next time:** if strings render as raw keys, grep the call sites
 for a `"<modid>:"` prefix before touching staging/build output at all.
 
+## VSImGui debug overlay
+
+**Question: what key toggles the VSImGui debug overlay in-game (for the Debug-only
+`RegisterDebugSliders` layout tuning)?**
+
+**Ctrl + P.** Confirmed by decompiling the vendored `src/Mod/lib/VSImGui.dll` (v1.2.7):
+`RegisterHotKey("imguitoggle", ..., (GlKeys)98, (HotkeyType)2, false, true, false)`. The
+signature is `RegisterHotKey(code, name, key, type, altPressed, ctrlPressed, shiftPressed)`,
+so it's `ctrlPressed: true` + `GlKeys 98`, and `GlKeys 98 == P` in
+`VintagestoryAPI.dll`'s enum. Same file also registers `imguiincfont` = **Ctrl+F9** and
+`imguidecfont` = **Ctrl+F8** for overlay font size (useful if the slider labels render too
+small to read).
+
+These are the code-registered defaults; a rebind would live in
+`VintagestoryData/clientsettings.json`'s `keyMapping` (empty by default = defaults in
+effect). If Ctrl+P doesn't open the overlay, check `keyMapping` for an override or a
+conflicting bind before assuming the mod failed to load.
+
+**Symptom: VSImGui loads and Ctrl+P registers, but pressing it shows NOTHING on screen
+(no overlay, no error dialog) -- specifically on Apple Silicon.**
+
+The overlay cannot render on macOS Apple Silicon. macOS caps OpenGL at **4.1** (Apple
+deprecated OpenGL; it's emulated over Metal), but ImGui.NET's GL renderer -- which VSImGui
+wraps -- issues calls the 4.1/Metal path rejects. Confirmed from `client-main.log`: a
+startup `GLFW Exception: VersionUnavailable Requested OpenGL version 4.3, got version 4.1`
+(`Graphics Card Renderer: Apple M4`), then **thousands of per-frame**
+`[Error] after final compo - OpenGL threw an error: InvalidOperation` (8000+ in one
+session), where "after final compo" == `EnumRenderStage.AfterFinalComposition` (value 10),
+the exact stage VSImGui's `OffWindowRenderer` registers into (`RegisterRenderer(..., (EnumRenderStage)10, ...)`
+in the decompiled `VSImGui.dll`). So Ctrl+P *does* toggle overlay state and the `Draw`
+event *does* fire -- the draw call just errors out every frame, drawing nothing.
+
+This is a platform incompatibility, NOT a mod bug, hotkey problem, or staging error --
+don't chase it as one. The mod's `#if DEBUG` `RegisterDebugSliders` tuning path is
+therefore unavailable on this Mac; run it on a machine with OpenGL >= 4.3 (a Windows box
+with a normal GPU) via a **Debug**-configuration stage (`build/restage.ps1 -Configuration
+Debug`, or `build/restage.sh Debug`). Note a plain restage builds Release, which excludes
+VSImGui entirely (Mod.csproj `Configuration == 'Debug'` Condition) -- so even on capable
+hardware the sliders only exist in a Debug stage. ConfigLib's own settings panel is pure
+VS GUI (no ImGui) and works on any platform as an alternative live-ish editing path.
+
 ## Entry template
 
 ```

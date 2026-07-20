@@ -9,8 +9,22 @@
 # it instead of overwriting, which silently left a stale duplicate assets/assets/ tree
 # and a stale lang file in place during earlier manual re-staging.
 #
-# Usage: ./build/restage.sh
+# Usage: ./build/restage.sh [Debug|Release]
+#
+# Configuration defaults to Release (the player-like build; VSImGui is excluded from it
+# by a Condition in Mod.csproj, so a Release stage has zero ImGui presence). Pass Debug to
+# stage a build that includes the VSImGui live-tuning sliders (RegisterDebugSliders) --
+# required for the add-imgui-configlib-tuning task 5.1 investigation, since those sliders
+# are #if DEBUG-gated AND the reference itself is Debug-only. Note VSImGui's overlay only
+# actually renders on a machine with OpenGL >= 4.3 -- it draws nothing on Apple Silicon
+# (OpenGL 4.1 over Metal); see VSAPI-NOTES.md "VSImGui debug overlay".
 set -euo pipefail
+
+CONFIG="${1:-Release}"
+if [[ "$CONFIG" != "Debug" && "$CONFIG" != "Release" ]]; then
+  echo "error: configuration must be Debug or Release (got '$CONFIG')" >&2
+  exit 1
+fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -25,13 +39,13 @@ MODID=$(grep -iE '"modid"' "$MODINFO" | head -1 | sed -E 's/.*"modid" *: *"([^"]
 MODID="${MODID:-scribe}"
 
 STAGE="$HOME/Library/Application Support/VintagestoryData/Mods/$MODID"
-echo "Restaging ${MODID} -> $STAGE"
+echo "Restaging ${MODID} (${CONFIG}) -> $STAGE"
 
-dotnet build src/Mod/Mod.csproj --configuration Release
+dotnet build src/Mod/Mod.csproj --configuration "$CONFIG"
 
 mkdir -p "$STAGE"
 cp "$MODINFO" "$STAGE/"
-cp src/Mod/bin/Release/net10.0/*.dll "$STAGE/"
+cp "src/Mod/bin/$CONFIG/net10.0/"*.dll "$STAGE/"
 
 rm -rf "$STAGE/assets"
 if [[ -d src/Mod/assets ]]; then
