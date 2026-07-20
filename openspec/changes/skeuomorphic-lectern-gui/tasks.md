@@ -60,7 +60,7 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       `rowListContentBounds` provide the scrollbar control/value plumbing; actual visual
       hiding of off-screen rows comes from 3.2a's viewport culling, not from the clip
       itself.)
-- [x] 3.2a Rework the row list to viewport-cull instead of relying on the engine's
+- [ ] 3.2a Rework the row list to viewport-cull instead of relying on the engine's
       scissor for visual correctness: only add/compose rows (and their dividers) whose
       position falls within the current visible scrolled window, recomposing on scroll
       rather than assuming `BeginClip` hides the rest. (Two-pass measure/cull structure
@@ -181,20 +181,59 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       client-GUI-only change with no server-observable behavior). Live in-game
       re-verification (rapid Add-Task clicking, and scrolling, together) is still 3.5's
       job.)
+
+      **Reopened 2026-07-20:** live testing on Windows (VSImGui slider tool) showed the
+      recompose/reentrancy work above is sound, but scroll never actually moved rows
+      visually — the culling window advanced while rows stayed nailed to their unscrolled
+      positions (read view) or only their interactive parts moved (editor view). Root
+      cause is the static-vs-interactive render-pass split (design.md Decision 4, third
+      correction): the `contentBounds.fixedY` shift this task relies on only reaches the
+      interactive pass. The two-pass culling structure itself stands and is reused; the
+      `fixedY`-shift-for-visual-movement assumption does not. Superseded by 3.4a (switch
+      to viewport-relative row Y). Leaving unchecked until 3.4a lands and 3.5 re-verifies.
 - [x] 3.3 Confirm drag-reorder (`OnMouseMove`/`OnMouseUp`/`HitTestRowIndex`) still works
       correctly when the row list is scrolled away from its top position — hit-testing
       must account for scroll offset. (`HitTestRowIndex` already reads live
       `bounds.absY`, which `CalcWorldBounds()` recalculates on every scroll — confirmed
       by code inspection that no offset math is needed; live drag-while-scrolled retest
       still pending in 3.5/9.3.)
+      **Re-verify after 3.4a (2026-07-20):** 3.4a moves rows from a parent-`fixedY` shift
+      to a viewport-relative composed Y. Hit-testing reads live `bounds.absY`, so the
+      change should keep click targets aligned — but this must be re-confirmed in-game
+      once 3.4a lands, since the coordinate the rows are composed at is changing.
 - [x] 3.4 Revisit `MaxTextSizePercent` (currently 150, capped as a stopgap for the missing
       scroll region) now that overflow is handled by scrolling — raise or remove the cap
       per design.md's note that the original constraint no longer applies. Confirm with
       the user before removing it outright if any doubt remains about other reasons for
       the cap. (Raised to 300 as a looser sanity bound rather than removed outright.)
+- [ ] 3.4a Fix scroll not visually moving composed rows (design.md Decision 4, third
+      correction — confirmed live on Windows via the VSImGui slider tool, 2026-07-20).
+      The current model shifts the content parent's `fixedY` (`0 - scrollValue`) and
+      recalcs world bounds, but that only reaches the interactive render pass (`renderY`);
+      the static compose pass (`drawY`/`bgDrawY`, baked once into a cached texture) has no
+      scroll term, so read-view rows don't move at all and editor-view row chrome
+      (text-box borders, checkbox outlines, drag glyphs) freezes while text scrolls.
+      Fix: in `ComposeReadView`/`ComposeEditorView` pass 2, position each composed row at
+      a viewport-relative Y (`rowY - scrollValue`) so BOTH passes bake at the already-
+      scrolled coordinate, and drop reliance on the `contentBounds.fixedY` parent shift
+      for visual movement. Preserve the existing viewport culling (rows outside the window
+      still aren't composed) and `RecomposeEditorViewPreservingFocus` (scroll-while-typing
+      must not reset caret). Re-confirm hit-testing after: `HitTestRowIndex` reads live
+      `bounds.absY`, so the Y-model change must keep click targets aligned with what's
+      drawn.
+- [ ] 3.4b Fix scrollbar thumb-drag dying after ~1px in both views (design.md Decision 4,
+      fourth correction). `OnRowListScroll` calls `RequestRecompose()` the moment the
+      viewport escapes the composed range, which rebuilds `SingleComposer` including a
+      brand-new scrollbar element that never saw the mouse-down — orphaning the in-progress
+      drag after one step (mouse-wheel and track-clicks survive because they're one-shot,
+      not sustained gestures). Fix follows the existing `textSizePendingRecompose`
+      template: while the thumb is held, update `scrollValue`/`fixedY` live but defer the
+      cull-triggered recompose to `OnMouseUp` instead of firing it mid-drag.
 - [ ] 3.5 Manually test: create a document with enough rows to overflow the visible
       dialog height; confirm every row is reachable by scrolling, in both read and editor
-      view.
+      view — rows visually move on scroll (not just cull in/out in place), editor-view row
+      chrome (borders/checkbox outlines/drag glyphs) tracks its text, and dragging the
+      scrollbar thumb scrolls smoothly rather than dying after one step.
 
 ## 4. Portrait reshape
 
