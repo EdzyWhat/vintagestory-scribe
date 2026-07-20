@@ -1,4 +1,4 @@
-## 1. Sign-off on the accepted race (blocks everything else)
+## 1. Prerequisites (block everything else)
 
 - [x] 1.1 Confirm with the user whether design.md's Decision 2 (Read-view toggle applies
       directly to the authoritative `Document`, no lock acquisition, accepting a
@@ -10,6 +10,15 @@
       case is a single lost toggle/edit under a same-tick collision with an Editor-mode
       autosave — no corruption. No stronger guarantee required. Design.md's Open
       Question resolved accordingly.)
+- [ ] 1.2 Do not start this change until `skeuomorphic-lectern-gui`'s scroll fixes
+      (tasks 3.4a viewport-relative row Y, and 3.4b scrollbar thumb-drag defer) are
+      implemented and its 3.5 manual test passes. This change edits the same row-
+      rendering code paths (`ComposeReadView`/`ComposeEditorView`/`ScribeBlockRowCell`)
+      and its own 4.3/7.4 assume a correctly-scrolling row list — building interactive
+      Read-view toggles on top of a row list whose scroll is still broken would layer new
+      behavior onto an unstable base and make regressions hard to attribute. Hard
+      prerequisite, not a sequencing preference: confirm 3.4a/3.4b are done before any
+      task below.
 
 ## 2. Core: no changes expected, confirm the assumption
 
@@ -47,7 +56,8 @@
 - [ ] 4.2 Wire the read-view toggle's callback to send `ScribeToggleTaskMessage` over the
       network channel, keyed by the row's block index.
 - [ ] 4.3 Confirm the read-view row list's existing viewport-culling pass-2 logic (full
-      containment, per the just-shipped 3.5 fix) still applies correctly now that task
+      containment plus the 3.4a viewport-relative row Y, per `skeuomorphic-lectern-gui`'s
+      scroll fixes required by task 1.2) still applies correctly now that task
       rows are interactive elements, not just static text — an interactive element inside
       `BeginClip`'s child-elements block should behave the same way a static one does for
       culling purposes, but confirm rather than assume given `GuiElementTextInput`'s known

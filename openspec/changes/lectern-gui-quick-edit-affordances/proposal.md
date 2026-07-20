@@ -57,3 +57,12 @@ than necessary at larger scales.
   than fixed constants.
 - No `Core` changes expected — `ScribeDocument.ToggleTask` already exists and is reused
   as-is; this is a `Mod`-layer GUI/networking change only.
+
+## Dependency
+
+Hard prerequisite: `skeuomorphic-lectern-gui`'s scroll fixes (tasks 3.4a viewport-relative
+row Y and 3.4b scrollbar thumb-drag defer) must be implemented and its 3.5 manual test
+must pass before this change begins. Both changes edit the same row-rendering code
+(`ComposeReadView`/`ComposeEditorView`/`ScribeBlockRowCell`), and this change's interactive
+Read-view toggle assumes a correctly-scrolling row list; building on the still-broken
+scroll base would layer new behavior onto an unstable foundation. Enforced by task 1.2.
