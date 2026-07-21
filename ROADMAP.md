@@ -141,12 +141,17 @@ For the full design record and rationale, see the project plan.
 These are the cross-cutting forks the specs couldn't settle without you. They don't block the
 specs (each documents its assumed default) but they shape sequencing and scope:
 
-1. **v4 faction-backing** — build task-assignment on VS's built-in player groups (no dependency,
-   real leader/member roles, but they read as chat groups), a dependency-free shared owner-UID
-   list, or a third-party faction mod (reintroduces a hard dep)?
-2. **Pull the trivial lectern-polish items out now** — the "Edit Tasks" relabel + face-on-place
-   have zero S2 dependency and would improve every playtest immediately. Standalone quick change,
-   or hold with the rest of the polish cluster?
+1. **v4 faction-backing** — **DECIDED 2026-07-21: defer.** Ship the personal writing desk first;
+   leave faction backing (built-in player groups vs. shared owner-UID list vs. third-party mod)
+   as an open question until v4 is actually scoped. The player-group finding (VSAPI-NOTES) means
+   the no-dependency path exists whenever we return to it.
+2. **Lectern-polish quick wins** — **DECIDED 2026-07-21: hold with the polish cluster**, not a
+   standalone change. Reason: the "Edit"/"Edit Tasks" relabel opens a larger question — use
+   **icons instead of text** for these labels/controls, which requires first auditing the
+   built-in icon font (see the lectern-gui-polish spec's icon-font audit — note there's NO
+   built-in pin or grip glyph, so custom-drawn SVGs may be needed) and deciding built-in vs.
+   custom-drawn. So the relabel + placement facing wait until that icon direction is settled
+   rather than shipping text labels we'd then replace.
 3. **v5 HUD pin scope** — when the source document is on an item you're NOT holding, do pinned
    tasks still show (needs a server-pushed "my pins" summary) or only the currently-held
    document's pins?
