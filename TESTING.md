@@ -6,74 +6,109 @@ re-verified it yourself; the agent-written verdict line under a checked item is 
 actually confirms it. Hand-checking a box with no verdict line will be reverted next
 regeneration.
 
-## add-imgui-configlib-tuning
+**How to refer to an item across machines:** quote its **code** (the `` `xxxxxxxx` ``
+fingerprint at the start of each item) and its **change + task number** (e.g.
+"skeuomorphic-lectern-gui 3.5") — the bare task number alone is ambiguous, since more than
+one change has a "3.5".
 
-- [ ] `8a356779` Open the lectern in a Debug build, press VSImGui's toggle hotkey to show
-      the overlay, and drag each bound "Lectern Layout" slider — confirm the dialog
-      recomposes live and matches the new value, and that `scribe-client-config.json`
-      stays unchanged until "Save" is pressed. *(2.6)*
-- [ ] `c2729a2d` Using the live Debug slider window, drag `VisibleListHeight`/`RowSpacing`
-      and watch whether the editor-view row range missing its drag-handle/checkbox/input
-      chrome shifts along with the visible window's edges — this is the actual diagnostic
-      goal of the whole change. *(5.1)*
-- [ ] `8c7c2b2a` Fully relaunch the client after restaging and confirm the lectern still
-      opens and behaves normally — no regression from the new VSImGui/ConfigLib
-      references. *(4.4)*
-- [ ] `171935d3` With ConfigLib and VSImGui installed, edit an exposed "Lectern Layout"
-      field via ConfigLib's in-game settings panel and save — confirm the lectern
-      reflects the new value. *(3.4)*
-- [ ] `d83db914` With ConfigLib NOT installed, confirm the mod loads and the lectern opens
-      normally with no missing-dependency warning. *(3.5)*
+**Before testing scrolling with the ImGui slider window open:** the ImGui overlay grabs the
+mouse while its window is expanded, so click-and-drag on the game's scrollbar won't work
+while it's open. **Collapse the ImGui window first**, then test dragging. (Slider values you
+set stay applied while it's collapsed — you only need it expanded to *move* a slider.)
 
 ## skeuomorphic-lectern-gui
 
-- [ ] `7d808ca9` Add enough rows to overflow the visible dialog height; confirm every
-      row is reachable by scrolling, in both read and editor view. *(3.5)*
-      - **Still broken 2026-07-19** (reported via playtest-checklist app, detailed note):
-        row content bled ~30px past the dialog's bottom edge once scrolled down (not at
-        the very top of the range). Root cause found and fixed in code: the row-list
-        cull test only checked for *overlap* with the visible window, not full
-        *containment* — since nothing here visually clips a composed row's rendering
-        (see design.md's Decision 4), a row straddling the window's edge still rendered
-        at its full height, tail bleeding past the frame. Changed to require full
-        containment (`GuiDialogScribeLectern.cs` pass 2, both views).
-        A same-day retest (15:50) was run against a stale build (the fix was never
-        restaged before that test) — false alarm, not a real regression. Restaged
-        16:59; a second retest (16:03, screenshot-backed) against the restaged build
-        showed the bleed itself gone, but surfaced a separate, still-unexplained question
-        (only the last composed editor-view row renders full drag-handle/checkbox/input
-        chrome) — tracked as `add-imgui-configlib-tuning` task 5.1's live investigation,
-        not folded into this verdict since it's a distinct symptom. Leaving unchecked
-        until a clean retest confirms the bleed is gone with no unexplained side effects.
-- [ ] `c0c0fc4d` Place a lectern and right-click it open at normal interaction range;
-      confirm the dialog fits on screen with nothing cut off or overlapping the hotbar,
-      row text is legible without leaning in, and the portrait proportions read as
-      intentional rather than cramped. *(4.4)*
-      - Rewritten 2026-07-19: the prior wording ("confirm it reads well ... at the
-        vanilla lectern's normal interaction distance") was flagged as unclear how to
-        test (via the submitted playtest report). Rewrote task 4.4 in tasks.md into
-        concrete checkable steps and updated this item to match — fingerprint changed
-        since the underlying text changed; not yet tested against the new wording.
-- [ ] `e624a788` Confirm the backdrop renders correctly behind both read and editor
-      view content, with no rows rendered behind/under an opaque part of it. *(5.4)*
-- [ ] `805e78a7` Start typing in a note's text area, then hover a different row's
-      delete/pin icon and back — confirm caret/typing is undisturbed. *(6.6)*
-- [x] `0f961614` Pin a task, switch views, fully quit and relaunch the client — confirm
-      the pin survives. *(7.5)*
-      - **Confirmed 2026-07-19** (reported via playtest-checklist app, detailed note):
-        pin survives switching views and a full quit/relaunch, as specified. Note: the
-        same report also flagged that the pin icon is currently hover-only rather than
-        always visible once pinned — that's a real UX gap but a design change, not part
-        of this persistence test; tracked separately as a backlog item, not folded into
-        this verdict.
-- [ ] `942740b6` Full pass: scroll a long document, drag-reorder while scrolled, drag
-      the text-size slider, pin/unpin a task — confirm no regression vs.
-      add-lectern-block's own playtest checklist. *(9.3)*
+- [ ] `9e2c1a30` **Scrolling a long list (skeuomorphic-lectern-gui 3.5).** Open a lectern
+      and add enough tasks and notes that they don't all fit in the box and a scrollbar
+      appears on the right. Test all three ways of scrolling, in **both** the plain
+      right-click read view and the shift+right-click edit view:
+      1. **Mouse wheel:** roll the wheel up and down. The whole list of rows should slide
+         up and down smoothly as one piece — the text, checkboxes, and any icons all moving
+         together. Each notch of the wheel should move the list by about one task row (not
+         two). *Broken would look like:* rows blinking out and reappearing in fixed spots
+         while seeming stuck, or (in edit view) the text sliding but the checkbox outlines
+         and text-box borders staying frozen in place.
+      2. **Dragging the scrollbar handle:** collapse the ImGui window first (see note at
+         top), then click and hold the scrollbar handle and drag it up and down. The handle
+         should follow your mouse the whole way, AND the rows should slide along with it
+         continuously as you drag — not stay still and only jump to the new spot when you
+         let go. *Broken would look like:* the handle stops moving almost immediately (after
+         about one pixel), or the handle moves but the rows don't follow until release.
+      3. **Reaching every row:** by whatever method, confirm you can scroll all the way to
+         the very last row and it's fully visible, and back to the very first — nothing is
+         permanently cut off at the top or bottom, and no row spills out below the box's
+         bottom edge or above its title.
+- [ ] `c0c0fc4d` **Dialog fits and reads well (skeuomorphic-lectern-gui 4.4).** Place a
+      lectern and right-click to open it at normal standing distance (don't back away or
+      step unusually close). Check three things, and if any looks wrong say which one and
+      what was off (rather than just pass/fail):
+      (a) the whole dialog fits on screen with nothing cut off at the edges and nothing
+      overlapping your hotbar or other on-screen elements, at the default GUI scale;
+      (b) the row text at the default text size is comfortably readable without leaning
+      toward the screen;
+      (c) the shape (taller than it is wide) looks deliberate, not squeezed or cramped.
+- [ ] `e624a788` **Backdrop renders correctly (skeuomorphic-lectern-gui 5.4).** With the
+      lectern open, confirm the parchment backdrop image sits correctly behind the content
+      in both read and edit view, and that no row is drawn underneath an opaque part of the
+      backdrop (i.e. no text hidden or half-hidden behind the background).
+- [ ] `805e78a7` **Hovering icons doesn't disturb typing (skeuomorphic-lectern-gui 6.6).**
+      In edit view, click into a note and start typing. While typing, move your mouse over a
+      different row so its delete/pin icons appear, then move it away again. Your typing
+      cursor should stay exactly where it was and your text should be unaffected — moving
+      the mouse over other rows must not interrupt what you're typing.
+- [x] `0f961614` **Pin survives reload (skeuomorphic-lectern-gui 7.5).** Pin a task, switch
+      between read and edit view, then fully quit the game to desktop and relaunch. The task
+      should still be pinned.
+      - **Confirmed 2026-07-20** (playtest report): pin survives view-switching and a full
+        quit/relaunch, as specified.
+      - *(Earlier note, still open as a separate backlog item, not this test:* the pin icon
+        is currently only visible on hover, not always-shown once a task is pinned — a real
+        UX gap but a design change, tracked separately.)
+- [ ] `88d4f7b2` **Full scroll-and-edit pass (skeuomorphic-lectern-gui 9.3).** With a list
+      long enough to scroll: scroll down partway, then in edit view drag a row by its handle
+      to reorder it (confirm it lands where you dropped it and the click lined up with the
+      row you grabbed); drag the text-size slider across its range (confirm rows grow/shrink
+      and re-wrap without overlapping); pin and unpin a task. Overall, confirm nothing
+      regressed versus how the lectern behaved before — no rows spilling out of the box, no
+      frozen or misplaced pieces, no lost clicks.
 
 ## add-lectern-block
 
-- [ ] `c127b9ad` Multiplayer: two clients, one lectern each — confirm edits are
-      session-independent and visible live in read view. *(7.5)*
-- [ ] `2a105a38` Hold the editor lock in one session; confirm a second session is
-      refused editor access but still sees read-only content, and that closing/
-      disconnecting releases it. *(7.6)*
+- [ ] `c127b9ad` **Multiplayer, separate lecterns (add-lectern-block 7.5).** With two
+      clients connected, give each a lectern. Confirm edits made on one player's lectern
+      don't bleed into the other's, and that when one player edits, the other sees the change
+      appear live in their read view of that same lectern.
+- [ ] `2a105a38` **Editor lock (add-lectern-block 7.6).** Have one player open a lectern in
+      edit view (holding the lock). Confirm a second player is refused edit access to that
+      same lectern but can still open it read-only, and that when the first player closes it
+      or disconnects, the lock releases so the second player can then edit.
+
+## add-imgui-configlib-tuning
+
+- [ ] `8a356779` **Debug sliders recompose live (add-imgui-configlib-tuning 2.6).** In a
+      Debug build, open the lectern and press VSImGui's toggle hotkey to show the overlay.
+      Drag each "Lectern Layout" slider and confirm the dialog updates live to match. Confirm
+      `scribe-client-config.json` on disk does NOT change until you press the "Save" button.
+      - **Confirmed 2026-07-20** (playtest report): "All functional."
+- [ ] `c2729a2d` **Diagnose the frozen-chrome symptom (add-imgui-configlib-tuning 5.1).**
+      *This item predates the scroll fixes and was written to diagnose them; re-evaluate
+      whether it's still needed now that skeuomorphic-lectern-gui 3.4a is in.* Using the live
+      Debug sliders, drag `VisibleListHeight` and `RowSpacing` and watch the edit-view rows:
+      the goal is to see whether the parts of a row that used to freeze in place (checkbox
+      outlines, text-box borders, drag handles) now move together with the rest of the row as
+      the list resizes.
+      - **Not re-tested against the fresh build yet.** The earlier "unsure" verdict was
+        against a stale build (without the scroll fixes) and reflected unclear wording, not a
+        real observation — disregard it.
+- [ ] `8c7c2b2a` **No regression from the new references (add-imgui-configlib-tuning 4.4).**
+      Fully relaunch the client after restaging and confirm the lectern still opens and
+      behaves normally, with no errors from the added VSImGui/ConfigLib references.
+      - **Confirmed 2026-07-20** (playtest report): opens and behaves normally.
+- [ ] `171935d3` **ConfigLib panel edits apply (add-imgui-configlib-tuning 3.4).** With both
+      ConfigLib and VSImGui installed, open ConfigLib's in-game settings panel, change an
+      exposed "Lectern Layout" field, and save. Confirm the lectern reflects the new value.
+      - **Confirmed 2026-07-20** (playtest report): lectern reflects the saved value.
+- [ ] `d83db914` **Loads without ConfigLib (add-imgui-configlib-tuning 3.5).** With ConfigLib
+      NOT installed, confirm the mod still loads and the lectern opens normally, with no
+      missing-dependency warning.
+      - **Confirmed 2026-07-20** (playtest report): loads and opens normally.

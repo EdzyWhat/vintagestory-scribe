@@ -224,22 +224,40 @@ the freshly composed scrollbar/slider is a BRAND-NEW element that never received
 mouse-down, so the drag is orphaned after one step. One-shot inputs (wheel, track-click)
 survive because they don't rely on a held gesture spanning frames.
 
-**Fix pattern:** defer the recompose out of the drag. Set a "pending recompose" flag and
-actually rebuild in `OnMouseUp` instead of inside the change callback. This dialog already
-does exactly this for its text-size slider (`textSizePendingRecompose`, drained in
-`OnMouseUp`) — mirror it for the scrollbar (`rowListScrollPendingRecompose`). Detect an
-in-progress thumb-drag via the scrollbar's own public `mouseDownOnScrollbarHandle` field, so
-one-shot inputs (wheel, track-click) still recompose immediately while only held drags defer.
-See `GuiDialogScribeLectern.OnRowListScroll`/`OnMouseUp`.
+**Fix pattern (two options — this codebase uses the second):**
 
-**Interaction with the compose-at-scrolled-Y fix (entry above):** once rows are composed at a
-viewport-relative Y and the parent `fixedY` shift is gone, there is no cheap live state to
-nudge during the drag — the only thing that moves rows is a recompose, which is exactly what's
-being deferred. So the thumb tracks the mouse live (the scrollbar element draws its own handle
-every frame) but the row content stays put and snaps to the final position on mouse-up. That
-snap-on-release is an accepted consequence of cull-don't-clip + compose-at-scrolled-Y, not a
-separate bug. Do NOT try to restore a live-`fixedY`-nudge to make the content track
-continuously — it would reintroduce the static-chrome-frozen glitch the entry above fixes.
+*Option A — defer the recompose to mouse-up.* Set a "pending recompose" flag and rebuild in
+`OnMouseUp` instead of inside the change callback (this dialog does exactly this for its
+text-size slider: `textSizePendingRecompose`, drained in `OnMouseUp`). Simple, but the content
+can't move until release. Fine for a slider whose value applies on release anyway; **not** fine
+for a scrollbar, where the whole point is the content tracking the thumb continuously.
+
+*Option B — recompose every frame but hand the drag off to the new element (used for the row
+list).* When rows are composed at a viewport-relative Y (see the entry above), the ONLY way to
+move them on scroll is a recompose — so deferring it (Option A) leaves the rows frozen until
+release, which playtesting rejected (2026-07-20: "the thumb moves smoothly but the text stays
+still until I let go"). Instead, recompose on the normal next-frame path so rows track the
+thumb, and carry the drag across the rebuild: the freshly composed `GuiElementScrollbar` is a
+new element that never saw the mouse-down, so copy the OLD element's public
+`mouseDownOnScrollbarHandle` (true) and `mouseDownStartY` (the grab offset) onto it right after
+Compose. The physical mouse button is still down, so the engine keeps dispatching `OnMouseMove`
+to the composer's elements; the new scrollbar, now believing it's mid-drag, keeps responding
+and the gesture survives seamlessly. Clear the captured handoff in `OnMouseUp` so a recompose
+still queued from the drag's final frame can't re-grab a scrollbar after the button is up. See
+`GuiDialogScribeLectern.OnRowListScroll`/`SetupRowListScrollbar`/`OnMouseUp` and
+`ScribeRowListScrollbar`.
+
+**Mouse-wheel step is hardcoded in the engine (`scaled(102)` content px/notch), overridable.**
+`GuiElementScrollbar.OnMouseWheel` scrolls a fixed `scaled(102)` pixels per notch regardless of
+row height — for this list that's ~2 task rows, which playtesting found too coarse to land on a
+specific row. Subclass `GuiElementScrollbar` and override `OnMouseWheel` to scroll a caller-set
+number of content pixels per notch (`ScribeRowListScrollbar.RowStep`, set to one task-row
+height each compose). Work in content units via the public `CurrentYPosition` getter/setter
+(`= currentHandlePosition * ScrollConversionFactor`) rather than the base's handle-space math,
+and keep the base's sign convention (`- delta`, wheel-up scrolls toward the top) and its
+"content fits, ignore wheel" guard. Add it with `AddInteractiveElement(new Subclass(...), key)`
+since `AddVerticalScrollbar` hardcodes the base type; `GetScrollbar(key)` still returns it (cast
+to the subclass to reach `RowStep`).
 
 ---
 

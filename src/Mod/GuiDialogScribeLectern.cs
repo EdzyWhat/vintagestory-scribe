@@ -241,12 +241,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         else ComposeReadView();
     }
 
-    /// <summary>Set while a scrollbar thumb-drag (or track-click) is holding the handle and has
-    /// scrolled past the composed window -- the recompose that would re-bake rows at the new
-    /// scroll position is deferred to <see cref="OnMouseUp"/> instead of firing mid-drag. See
-    /// <see cref="OnRowListScroll"/> for why, and <see cref="textSizePendingRecompose"/> for the
-    /// same pattern applied to the text-size slider.</summary>
-    private bool rowListScrollPendingRecompose;
+    /// <summary>When a thumb-drag triggers a recompose, the drag's grab offset
+    /// (<c>GuiElementScrollbar.mouseDownStartY</c>) captured just before the recompose, so the
+    /// freshly-composed scrollbar can be told the drag is still in progress -- see
+    /// <see cref="OnRowListScroll"/> and the compose-tail restore. Null when no drag handoff is
+    /// pending.</summary>
+    private int? rowListDragHandoff;
 
     private void OnRowListScroll(float value)
     {
@@ -263,21 +263,24 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         double viewportBottom = value + clientConfig.VisibleListHeight;
         if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
         {
-            // A thumb-drag is a sustained gesture: recomposing now rebuilds SingleComposer and
-            // replaces the scrollbar element the drag is bound to, orphaning it after one step
-            // (design.md Decision 4, fourth correction; VSAPI-NOTES.md thumb-drag entry). Defer
-            // the recompose to OnMouseUp while the handle is held. Mouse-wheel scrolls aren't a
-            // held gesture (mouseDownOnScrollbarHandle is false), so they recompose normally via
-            // the usual next-frame deferral.
+            // A thumb-drag is a sustained gesture across frames: the recompose rebuilds
+            // SingleComposer including a brand-new scrollbar that never saw the mouse-down, so
+            // without intervention the drag would orphan after one step (design.md Decision 4,
+            // fourth correction). Rather than defer the whole recompose to mouse-up (which left
+            // the rows frozen until release -- playtest feedback 2026-07-20), recompose every
+            // frame via the normal next-frame OnRenderGUI path so the rows track the thumb
+            // smoothly, and HAND THE GRAB OFF to the new scrollbar: capture the drag offset here,
+            // reapply it (and mouseDownOnScrollbarHandle) at the compose tail. The mouse button
+            // never physically came up, so the engine keeps sending OnMouseMove; the new
+            // scrollbar, now aware it's mid-drag, keeps responding. Mouse-wheel scrolls aren't a
+            // held gesture (mouseDownOnScrollbarHandle false), so nothing is captured and they
+            // just recompose normally.
             var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
             if (scrollbar is { mouseDownOnScrollbarHandle: true })
             {
-                rowListScrollPendingRecompose = true;
+                rowListDragHandoff = scrollbar.mouseDownStartY;
             }
-            else
-            {
-                RequestRecompose();
-            }
+            RequestRecompose();
         }
     }
 
@@ -325,7 +328,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         hoverTargetIndex = null;
         rowListScrollValue = 0;
         pendingRecomposeAction = null;
-        rowListScrollPendingRecompose = false;
+        rowListDragHandoff = null;
 
         if (editorMode)
         {
@@ -498,7 +501,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         SingleComposer
                 .EndChildElements()
             .EndClip()
-            .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
+            .AddInteractiveElement(new ScribeRowListScrollbar(capi, OnRowListScroll, scrollbarBounds), "rowListScrollbar");
 
         y += clientConfig.VisibleListHeight + rowSpacing;
 
@@ -507,19 +510,41 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SingleComposer.EndChildElements().Compose();
 
+        SetupRowListScrollbar(contentY);
+    }
+
+    /// <summary>Post-Compose scrollbar wiring shared by both views. Sets the mouse-wheel step to
+    /// one task-row height (so a notch scrolls one row, not the engine default ~2 -- playtest
+    /// feedback 2026-07-20), tells the scrollbar its visible/total heights, restores the real
+    /// scroll position, and -- if a thumb-drag was in progress when this recompose was triggered
+    /// -- hands the drag grab off to this freshly composed scrollbar so the gesture survives the
+    /// rebuild (see <see cref="rowListDragHandoff"/>/<see cref="OnRowListScroll"/>).</summary>
+    private void SetupRowListScrollbar(double contentY)
+    {
         // SetHeights synchronously fires OnRowListScroll(0) via the scrollbar's own
         // change-notify plumbing (GuiElementScrollbar.SetNewTotalHeight -> TriggerChanged),
         // regardless of the real scroll position -- isComposingRowList suppresses that spurious
         // call so it can't snap the list back to the top or trigger a re-entrant recompose. The
         // real scroll position is reapplied right after via CurrentYPosition's public setter (no
         // callback re-entrancy) so the thumb sits at the right spot. The content parent is NOT
-        // shifted (fixedY stays 0): rows are composed at a viewport-relative Y in pass 2 above,
-        // so a parent shift on top of that would double-offset them (design.md Decision 4, third
-        // correction).
+        // shifted (fixedY stays 0): rows are composed at a viewport-relative Y, so a parent shift
+        // on top of that would double-offset them (design.md Decision 4, third correction).
         isComposingRowList = true;
-        var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
+        var scrollbar = (ScribeRowListScrollbar)SingleComposer.GetScrollbar("rowListScrollbar");
+        scrollbar.RowStep = clientConfig.TaskRowHeight * clientConfig.TextSizeScale;
         scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
+
+        // Reattach an in-progress thumb-drag to this new scrollbar element (see OnRowListScroll):
+        // mark it as being dragged and restore the same grab offset, so the engine's ongoing
+        // OnMouseMove stream keeps driving it instead of the drag dying with the old element.
+        if (rowListDragHandoff is { } grabOffset)
+        {
+            scrollbar.mouseDownOnScrollbarHandle = true;
+            scrollbar.mouseDownStartY = grabOffset;
+            rowListDragHandoff = null;
+        }
+
         isComposingRowList = false;
     }
 
@@ -661,7 +686,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         SingleComposer
                 .EndChildElements()
             .EndClip()
-            .AddVerticalScrollbar(OnRowListScroll, scrollbarBounds, "rowListScrollbar");
+            .AddInteractiveElement(new ScribeRowListScrollbar(capi, OnRowListScroll, scrollbarBounds), "rowListScrollbar");
 
         y += clientConfig.VisibleListHeight + clientConfig.ListToControlsGap;
         SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, clientConfig.TextSizeLabelWidth, clientConfig.ControlRowHeight));
@@ -696,14 +721,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SingleComposer.EndChildElements().Compose();
 
-        // See the matching comment in ComposeReadView for why isComposingRowList/
-        // CurrentYPosition are set this way rather than a plain SetHeights call, and why the
-        // content parent's fixedY is left at 0 (rows are composed at a viewport-relative Y).
-        isComposingRowList = true;
-        var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
-        scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
-        scrollbar.CurrentYPosition = (float)rowListScrollValue;
-        isComposingRowList = false;
+        SetupRowListScrollbar(contentY);
 
         // Seed row values (toggle state, text) only after Compose() has calculated real bounds --
         // see the doc comment on ScribeBlockRowCell.Compose for why doing this earlier corrupts
@@ -896,19 +914,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             return;
         }
 
-        // A thumb-drag that scrolled past the composed window deferred its recompose to here
-        // (see OnRowListScroll) so rebuilding SingleComposer mid-drag couldn't orphan the
-        // gesture. base.OnMouseUp above has already cleared the scrollbar's own
-        // mouseDownOnScrollbarHandle, so it's safe to recompose now -- this bakes the rows at the
-        // final scroll position (during the drag itself the thumb tracked the mouse live while
-        // the row content stayed put, since visual movement now comes only from recompose, not a
-        // parent shift; see design.md Decision 4, third+fourth corrections).
-        if (rowListScrollPendingRecompose)
-        {
-            rowListScrollPendingRecompose = false;
-            RecomposeCurrentView();
-            return;
-        }
+        // The thumb-drag is over: base.OnMouseUp above cleared the current scrollbar's
+        // mouseDownOnScrollbarHandle. Clear any not-yet-consumed drag handoff too, so a recompose
+        // still queued from the drag's last frame (see OnRowListScroll) doesn't re-grab the new
+        // scrollbar after the button is already up. The queued recompose still runs and bakes the
+        // rows at the final scroll position; it just won't reattach a drag that has ended.
+        rowListDragHandoff = null;
 
         if (draggedBlockIndex is null || scratchDocument is null)
         {

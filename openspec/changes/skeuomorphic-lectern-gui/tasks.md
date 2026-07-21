@@ -265,11 +265,40 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       track-clicks (`mouseDownOnScrollbarHandle` false) recompose immediately via the normal
       next-frame `RequestRecompose` path. Clean Debug+Release build, 35/35 Core.Tests. Live
       re-verify (smooth thumb-drag, no dying after one step) is 3.5's job.
+
+      **Revised 2026-07-20 after live retest on Windows (fresh build).** The
+      defer-to-mouse-up approach above did fix the drag death (thumb now moves the full
+      range smoothly) but exposed the tradeoff it accepted: the user reported the rows/text
+      stay frozen and only jump to the new position on release, which reads wrong for a
+      scrollbar. Reworked to keep the drag alive *and* track continuously: `OnRowListScroll`
+      now recomposes every frame via the usual next-frame path (so rows follow the thumb)
+      and **hands the drag off** to the freshly composed scrollbar -- captures the old
+      element's `mouseDownStartY` grab offset (`rowListDragHandoff`) and, in the new
+      `SetupRowListScrollbar` compose-tail helper, copies `mouseDownOnScrollbarHandle = true`
+      + that offset onto the new scrollbar. The mouse button is still physically down, so the
+      engine keeps sending `OnMouseMove`; the new scrollbar, now believing it's mid-drag,
+      keeps responding -- the gesture survives the rebuild seamlessly. `OnMouseUp` clears
+      `rowListDragHandoff` so a recompose queued from the drag's last frame can't re-grab
+      after release. The `rowListScrollPendingRecompose`/defer-to-mouse-up flag was removed.
+      Clean Debug+Release build, 35/35 Core.Tests. See VSAPI-NOTES.md thumb-drag entry
+      "Option B". Live re-verify is 3.5's job.
+- [x] 3.4c Mouse-wheel scrolls too far (~2 task rows per notch) -- playtest feedback
+      2026-07-20; user prefers one row per notch. The step is the engine's hardcoded
+      `scaled(102)` content px/notch in `GuiElementScrollbar.OnMouseWheel`, independent of
+      row height. Added `ScribeRowListScrollbar : GuiElementScrollbar` overriding only
+      `OnMouseWheel` to scroll `RowStep` content px/notch (set to one task-row height,
+      `TaskRowHeight * TextSizeScale`, each compose in `SetupRowListScrollbar`). Added via
+      `AddInteractiveElement(new ScribeRowListScrollbar(...), key)` in both views since
+      `AddVerticalScrollbar` hardcodes the base type; `GetScrollbar(key)` still returns it
+      (cast to reach `RowStep`). Clean Debug+Release build, 35/35 Core.Tests. See
+      VSAPI-NOTES.md "Mouse-wheel step is hardcoded". Live re-verify is 3.5's job.
 - [ ] 3.5 Manually test: create a document with enough rows to overflow the visible
       dialog height; confirm every row is reachable by scrolling, in both read and editor
       view — rows visually move on scroll (not just cull in/out in place), editor-view row
-      chrome (borders/checkbox outlines/drag glyphs) tracks its text, and dragging the
-      scrollbar thumb scrolls smoothly rather than dying after one step.
+      chrome (borders/checkbox outlines/drag glyphs) tracks its text, dragging the scrollbar
+      thumb scrolls the rows smoothly and continuously (rows follow the thumb, not just jump
+      on release) rather than dying after one step, and each mouse-wheel notch scrolls about
+      one task row (not two).
 
 ## 4. Portrait reshape
 
