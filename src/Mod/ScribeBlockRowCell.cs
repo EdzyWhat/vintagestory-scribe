@@ -91,7 +91,12 @@ public static class ScribeBlockRowCell
     /// elements size themselves to their bounds, not to their font, so without this larger
     /// fonts get clipped.</summary>
     public static double RowHeight(ScribeBlock block, ScribeClientConfig config) =>
-        (block.IsTask ? config.TaskRowHeight : config.TextSectionRowHeight) * config.TextSizeScale;
+        // Floor the scaled height at MinRowHeight: below ~15px the engine's icon renderer
+        // computes a negative icon size and crashes rasterizing the pin/delete SVGs (confirmed
+        // by decompile -- OverflowException in SvgLoader.rasterizeSvg via InnerHeight - scaled(9)
+        // going negative). The font still scales below this; only the row box stops shrinking.
+        System.Math.Max(config.MinRowHeight,
+            (block.IsTask ? config.TaskRowHeight : config.TextSectionRowHeight) * config.TextSizeScale);
 
     /// <summary>The text element's own width within a row of <paramref name="rowWidth"/> --
     /// the same math <see cref="Compose"/> uses internally, exposed so callers can measure

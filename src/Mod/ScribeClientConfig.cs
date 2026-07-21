@@ -75,6 +75,15 @@ public sealed class ScribeClientConfig
     /// <summary>Base (unscaled) height of a task row, before <see cref="TextSizeScale"/>.</summary>
     public double TaskRowHeight = 30;
 
+    /// <summary>Safety floor for the scaled row height (see <c>ScribeBlockRowCell.RowHeight</c>).
+    /// Independent of look-and-feel: below roughly 15px the engine's icon renderer computes a
+    /// negative icon size (row height minus a fixed <c>scaled(9)</c> inset) and crashes with an
+    /// arithmetic overflow while rasterizing the pin/delete SVGs. The font keeps scaling down
+    /// past this point; only the row's own height (and thus its icon chrome) stops shrinking, so
+    /// a very small text size gives tiny text in a minimally-sized row rather than a crash. 20
+    /// leaves margin above the ~15px threshold the old 50% text-size floor happened to sit at.</summary>
+    public double MinRowHeight = 20;
+
     /// <summary>Base (unscaled) height of a text-section row, before <see cref="TextSizeScale"/>.</summary>
     public double TextSectionRowHeight = 70;
 
