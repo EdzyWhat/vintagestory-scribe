@@ -15,44 +15,44 @@
 
 ## 2. Editor rows on ScribeRowElement (edit mode)
 
-- [ ] 2.1 Wire `ScribeRowMode.Edit` in `ScribeRowElement`: draw each row's text as a static
+- [x] 2.1 Wire `ScribeRowMode.Edit` in `ScribeRowElement`: draw each row's text as a static
       label via `RowTextLayout` (checkbox + ruling drawn as in read mode).
-- [ ] 2.2 Add per-frame text-label suppression on the focused row (draw checkbox/ruling, skip
+- [x] 2.2 Add per-frame text-label suppression on the focused row (draw checkbox/ruling, skip
       the text pixels) so the floating input and label never both paint; `block.Text` untouched.
-- [ ] 2.3 Use the shared `RowHeightFixed`/`RowTextLayout` for edit-mode row height so read and
+- [x] 2.3 Use the shared `RowHeightFixed`/`RowTextLayout` for edit-mode row height so read and
       edit rows measure identically (no separate editor measure path).
 
 ## 3. Editor view composition and single floating input
 
-- [ ] 3.1 Rewrite `ComposeEditorView` to add `ScribeRowElement`s (Edit mode) inside `BeginClip`,
+- [x] 3.1 Rewrite `ComposeEditorView` to add `ScribeRowElement`s (Edit mode) inside `BeginClip`,
       mirroring `ComposeReadView`'s clip/scroll idiom.
-- [ ] 3.2 Add exactly one `ScribeRowTextInput` and reposition it onto the focused row (aligned to
+- [x] 3.2 Add exactly one `ScribeRowTextInput` and reposition it onto the focused row (aligned to
       the static label via `RowTextLayout`); enforce the single-live-input invariant.
-- [ ] 3.3 On row focus change, move the input to the new row, resume the previous row's static
+- [x] 3.3 On row focus change, move the input to the new row, resume the previous row's static
       label, and preserve caret/focus per the VSAPI-NOTES recompose-focus pattern.
-- [ ] 3.4 Delete the editor branch in `OnRowListScroll` so both views use the continuous
+- [x] 3.4 Delete the editor branch in `OnRowListScroll` so both views use the continuous
       `fixedY` native-clip shift; remove the now-dead cull/recompose/drag-handoff editor code.
 
 ## 4. Commit, navigation, and revert
 
-- [ ] 4.1 On Enter: commit the focused row's text via the existing lock-gated
+- [x] 4.1 On Enter: commit the focused row's text via the existing lock-gated
       `ScribeEditDocumentMessage` → `ApplyEdit`, then move focus to the next row.
-- [ ] 4.2 On Shift+Tab: commit the focused row, then move focus to the previous row.
-- [ ] 4.3 On blur (focus lost without Enter/Shift+Tab): commit the focused row's text.
-- [ ] 4.4 On Esc: revert the focused row to its stored `block.Text` without committing.
+- [x] 4.2 On Shift+Tab: commit the focused row, then move focus to the previous row.
+- [x] 4.3 On blur (focus lost without Enter/Shift+Tab): commit the focused row's text.
+- [x] 4.4 On Esc: revert the focused row to its stored `block.Text` without committing.
 
 ## 5. Unify width, remove seed, tolerate legacy config
 
-- [ ] 5.1 Collapse `ReadListWidth`/`EditorListWidth` in `ScribeClientConfig` into one shared
+- [x] 5.1 Collapse `ReadListWidth`/`EditorListWidth` in `ScribeClientConfig` into one shared
       width knob; update both compose paths and the debug sliders to the single field.
-- [ ] 5.2 Make config deserialization tolerant of the removed legacy keys (ignore unknown keys;
+- [x] 5.2 Make config deserialization tolerant of the removed legacy keys (ignore unknown keys;
       fall back to the default width if the new key is absent) so existing on-disk configs load.
-- [ ] 5.3 Delete `SeedSampleContentIfEmpty` and its constructor call (both `TEMP SAMPLE SEED`
+- [x] 5.3 Delete `SeedSampleContentIfEmpty` and its constructor call (both `TEMP SAMPLE SEED`
       sites).
 
 ## 6. Build, test, and playtest
 
-- [ ] 6.1 Build Debug and Release clean; run `dotnet test` (Core.Tests) — all green.
+- [x] 6.1 Build Debug and Release clean; run `dotnet test` (Core.Tests) — all green.
 - [ ] 6.2 Manually test in-game (Mac, `build/restage.sh`, full relaunch): Cmd+Arrow jumps to
       line ends, Alt/Option+Arrow skips by word, Shift extends selection during each — and none
       of these insert stray characters.

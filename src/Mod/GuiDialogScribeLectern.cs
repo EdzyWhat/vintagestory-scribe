@@ -31,16 +31,39 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private bool isDirty;
     private long? autosaveTickListenerId;
 
-    private int? draggedBlockIndex;
-    private int? hoverTargetIndex;
-
     private bool isToolPanelExpanded = true;
 
-    /// <summary>Row height used the last time <see cref="ComposeEditorView"/> laid out each note
-    /// row, keyed by block index -- lets <see cref="OnRowTextChanged"/> detect when a note has
-    /// wrapped to a different number of lines without re-measuring against a stale value, so it
-    /// only recomposes on an actual height change rather than on every keystroke.</summary>
-    private readonly System.Collections.Generic.Dictionary<int, double> composedNoteRowHeights = new();
+    /// <summary>The block index of the editor row currently being edited in place (the row the
+    /// single floating <see cref="ScribeRowTextInput"/> is positioned over), or null when no row
+    /// is being edited. That row suppresses drawing its own text label and hosts the live input;
+    /// every other row draws a static text label (design.md Decision 1). Reset in
+    /// <see cref="EnterMode"/> so entering the editor starts with no row focused.</summary>
+    private int? focusedEditIndex;
+
+    /// <summary>The focused row's text as it stood when editing began -- captured on focus so Esc
+    /// can revert the row to it without committing (task 4.4).</summary>
+    private string focusedEditOriginalText = "";
+
+    /// <summary>The single live edit input for the current compose, or null when no row is being
+    /// edited. Held so the compose tail can seed its value + focus it, and so a recompose can
+    /// snapshot its caret before rebuilding. There is only ever ONE (design.md Decision 1's
+    /// single-live-input invariant): it is added to exactly one row per compose and never more.</summary>
+    private ScribeRowTextInput? editInput;
+
+    /// <summary>The block index <see cref="editInput"/> was composed onto (mirrors
+    /// <see cref="focusedEditIndex"/> at compose time). Read by
+    /// <see cref="RecomposeEditorViewPreservingFocus"/> so it only restores the old caret position
+    /// when the recompose stayed on the SAME row (e.g. a text-size change), not when focus moved to
+    /// a different row (Enter/Shift+Tab/click), where the new row should start caret-at-end.</summary>
+    private int? editInputIndex;
+
+    /// <summary>Set while a recompose is tearing down the editor's live input, so the input's
+    /// <see cref="ScribeRowTextInput.OnFocusLost"/> blur-commit doesn't fire for a
+    /// programmatic (recompose-driven) focus loss -- only a genuine click-away should commit on
+    /// blur. The real commit for a recompose path is done explicitly by the caller (Enter/
+    /// Shift+Tab/row-click all flush before recomposing), so suppressing the blur here just avoids
+    /// a redundant second flush, never a dropped edit.</summary>
+    private bool suppressBlurCommit;
 
     /// <summary>
     /// One entry per tool-panel button. <c>Icon</c> is a built-in icon-font code (see
@@ -64,16 +87,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, clientConfig.MinTextSizePercent / 100f, clientConfig.MaxTextSizePercent / 100f);
 
         if (IsDuplicate) return;
-
-        // -------------------------------------------------------------------------------------
-        // TEMP SAMPLE SEED (row-list-rework S1): the read view now renders custom ScribeRowElements,
-        // but there is no edit-in-place yet (S2) to author content on this Mac, so seed some junk
-        // rows into an empty document to have something realistic to look at -- a mix of tasks and
-        // notes plus one deliberately long line to stress wrapping/clipping. Purely a client-side
-        // display convenience: it mutates only the locally-cached Document, never persists or sends
-        // anything. DELETE this whole block (and SeedSampleContentIfEmpty below) once S2's editor
-        // can create rows normally.
-        SeedSampleContentIfEmpty();
 
         EnterMode(isEditorMode, documentBytes);
 
@@ -117,14 +130,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             value => { clientConfig.TopContentGap = value; RequestRecompose(); }));
 
         debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
-            DebugDomain, DebugCategory, "Read List Width", 100f, 800f,
-            () => (float)clientConfig.ReadListWidth,
-            value => { clientConfig.ReadListWidth = value; RequestRecompose(); }));
-
-        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
-            DebugDomain, DebugCategory, "Editor List Width", 100f, 800f,
-            () => (float)clientConfig.EditorListWidth,
-            value => { clientConfig.EditorListWidth = value; RequestRecompose(); }));
+            DebugDomain, DebugCategory, "Row List Width", 100f, 800f,
+            () => (float)clientConfig.RowListWidth,
+            value => { clientConfig.RowListWidth = value; RequestRecompose(); }));
 
         debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
             DebugDomain, DebugCategory, "Row Divider Thickness", 0f, 10f,
@@ -150,25 +158,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         debugSliderIds.Clear();
     }
 #endif
-
-    /// <summary>TEMP (row-list-rework S1): seeds sample rows into an empty local document so the
-    /// custom read view has content to render before S2's edit-in-place exists. See the call site
-    /// in the constructor; delete both together when S2 lands. Client-only: never persisted or sent.</summary>
-    private void SeedSampleContentIfEmpty()
-    {
-        var doc = lectern.Document;
-        if (doc.Blocks.Count > 0) return;
-
-        doc.AddTask("Gather 32 firewood");
-        doc.AddTask("Smelt copper for a pickaxe");
-        doc.ToggleTask(1);
-        doc.AddTextSection("Remember: the abandoned mineshaft is two ridges east, past the birch grove.");
-        doc.AddTask("Trade rusty gears at the trader before winter");
-        doc.AddTextSection("A deliberately long note to stress text wrapping and boundary clipping: the quick brown fox jumps over the lazy dog, then wanders off to find enough sailcloth, resin, and iron bloom to finish the second floor of the cabin before the first snow.");
-        doc.AddTask("Plant flax near the water");
-        doc.AddTask("Fire the clay bricks");
-        doc.ToggleTask(7);
-    }
 
     private CairoFont RowFont() =>
         CairoFont.TextInput().WithFontSize((float)(GuiStyle.NormalFontSize * clientConfig.TextSizeScale));
@@ -200,20 +189,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// since opening a dialog or switching view mode should start scrolled to the top.</summary>
     private double rowListScrollValue;
 
-    /// <summary>The pixel Y-range (in row-list content coordinates) for which rows are currently
-    /// composed -- set at the end of each ComposeXxxView call from the same buffered window used
-    /// to decide which rows to add. <see cref="OnRowListScroll"/> only recomposes once the live
-    /// scroll viewport escapes this range.</summary>
-    private double rowListComposedRangeTop;
-    private double rowListComposedRangeBottom;
-
-    /// <summary>The contiguous block-index range actually composed (added to the composer) on the
-    /// last ComposeEditorView pass -- both -1 if none (e.g. an empty document). Rows outside this
-    /// range have no live elements, so <c>ApplyValues</c> and <c>HitTestRowIndex</c>'s fallback
-    /// must not assume every block index has one.</summary>
-    private int rowListComposedFirstIndex = -1;
-    private int rowListComposedLastIndex = -1;
-
     /// <summary>Suppresses <see cref="OnRowListScroll"/>'s recompose-triggering logic while a
     /// ComposeXxxView call is already in progress. <c>AddVerticalScrollbar(...).SetHeights(...)</c>
     /// always fires this callback synchronously with a freshly-constructed scrollbar's value (0),
@@ -221,22 +196,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// that transient 0 would immediately trigger a second, unnecessary (and endlessly
     /// re-entrant, since the recursive compose call would trigger it again) recompose.</summary>
     private bool isComposingRowList;
-
-    /// <summary>How far beyond the visible viewport, in each direction, rows stay composed once
-    /// added. MUST be 0 -- a nonzero buffer was tried first and rejected: any row inside the
-    /// buffer zone still renders at its true, unclipped position with nothing else stopping it
-    /// (rows are viewport-culled rather than relying on <c>BeginClip</c>/<c>PushScissor</c> to
-    /// visually hide overflow -- confirmed against real vsapi source that the engine's scissor
-    /// does not clip this row list's rendering at all; see design.md's Decision 4 correction).
-    /// With any buffer greater than zero, a buffered-but-off-screen row renders wherever its
-    /// computed position lands, independent of the dialog's own drawn background box -- confirmed
-    /// live: <c>screenshots/debug/2026-07-18_22-20-31_scroll-retest.png</c> shows a row rendering
-    /// past "Done Editing", directly on top of the world behind the dialog. Zero is the only value
-    /// that actually guarantees "nothing renders outside the box" -- accept the tradeoff that
-    /// every scroll tick (not just each time the visible set changes) triggers a recompose; this
-    /// dialog already recomposes on other frequent interactions (toggle, delete, drag-reorder)
-    /// with no observed cost.</summary>
-    private const double RowListCullBuffer = 0;
 
     /// <summary>Set by any callback that determines a recompose is needed, but must not act on
     /// it synchronously -- drained on the next <see cref="OnRenderGUI"/> tick instead. Every
@@ -254,16 +213,16 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// rather than the scrollbar). Originally scoped to just the scrollbar's callback
     /// (<c>rowListRecomposePending</c>); generalized to every mid-dispatch recompose site
     /// (<see cref="OnClickAddTask"/>, <see cref="OnClickToggleToolPanel"/>,
-    /// <see cref="OnRowDelete"/>, <see cref="OnRowTextChanged"/>, <see cref="OnClickSwitchToRead"/>)
-    /// once each was found to share the identical hazard. Mirrors
+    /// <see cref="OnRequestEditRow"/>, <see cref="OnEditViewToggleTask"/>,
+    /// <see cref="OnClickSwitchToRead"/>) once each was found to share the identical hazard. Mirrors
     /// <see cref="textSizePendingRecompose"/>'s existing, already-proven defer-to-next-safe-point
     /// pattern for the same class of problem, generalized to <c>OnRenderGUI</c> rather than
     /// <c>OnMouseUp</c> alone since mouse-wheel scrolling (and most of these button clicks) have
-    /// no "mouse up" to hook that fires after the dispatch loop completes. NOT used by the two
-    /// call sites inside this dialog's own <see cref="OnMouseUp"/> override (drag-reorder,
-    /// text-size-slider) -- those run AFTER <c>base.OnMouseUp(args)</c> has already returned, so
-    /// the composer-level dispatch loop has already finished and a direct, synchronous recompose
-    /// there is provably safe.</summary>
+    /// no "mouse up" to hook that fires after the dispatch loop completes. NOT used by the
+    /// text-size-slider recompose inside this dialog's own <see cref="OnMouseUp"/> override --
+    /// that runs AFTER <c>base.OnMouseUp(args)</c> has already returned, so the composer-level
+    /// dispatch loop has already finished and a direct, synchronous recompose there is provably
+    /// safe.</summary>
     private System.Action? pendingRecomposeAction;
 
     private void RequestRecompose()
@@ -281,61 +240,22 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         else ComposeReadView();
     }
 
-    /// <summary>When a thumb-drag triggers a recompose, the drag's grab offset
-    /// (<c>GuiElementScrollbar.mouseDownStartY</c>) captured just before the recompose, so the
-    /// freshly-composed scrollbar can be told the drag is still in progress -- see
-    /// <see cref="OnRowListScroll"/> and the compose-tail restore. Null when no drag handoff is
-    /// pending.</summary>
-    private int? rowListDragHandoff;
-
     private void OnRowListScroll(float value)
     {
         if (rowListContentBounds is null || isComposingRowList) return;
 
         rowListScrollValue = value;
 
-        // Read view (row-list-rework S1): rows are custom ScribeRowElements drawn in the
-        // interactive pass, which the BeginClip scissor clips natively. Scrolling is therefore the
-        // plain vanilla idiom -- shift the content parent's fixedY and recalc; every row's renderY
-        // (and its hit-test absY) follows in one call, with no cull, no recompose, and no
-        // drag-handoff needed (all of which the editor branch below still needs until S2 reworks
-        // it too). This is the whole payoff of the rework: smooth sub-pixel scrolling for free.
-        if (!IsEditorMode)
-        {
-            rowListContentBounds.fixedY = 0 - value;
-            rowListContentBounds.CalcWorldBounds();
-            return;
-        }
-
-        // Editor view (unchanged, pre-rework path): rows are baked at a viewport-relative Y (see
-        // ComposeEditorView pass 2), so visual movement on scroll comes only from recomposing at
-        // the new scroll value -- there is no parent fixedY shift to nudge live (design.md
-        // Decision 4, third correction). With RowListCullBuffer == 0 the composed range is exactly
-        // the visible window, so any scroll movement escapes it and needs a recompose. (S2 will
-        // move the editor view onto the read view's native-clip path above and delete this.)
-        double viewportTop = value;
-        double viewportBottom = value + clientConfig.VisibleListHeight;
-        if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
-        {
-            // A thumb-drag is a sustained gesture across frames: the recompose rebuilds
-            // SingleComposer including a brand-new scrollbar that never saw the mouse-down, so
-            // without intervention the drag would orphan after one step (design.md Decision 4,
-            // fourth correction). Rather than defer the whole recompose to mouse-up (which left
-            // the rows frozen until release -- playtest feedback 2026-07-20), recompose every
-            // frame via the normal next-frame OnRenderGUI path so the rows track the thumb
-            // smoothly, and HAND THE GRAB OFF to the new scrollbar: capture the drag offset here,
-            // reapply it (and mouseDownOnScrollbarHandle) at the compose tail. The mouse button
-            // never physically came up, so the engine keeps sending OnMouseMove; the new
-            // scrollbar, now aware it's mid-drag, keeps responding. Mouse-wheel scrolls aren't a
-            // held gesture (mouseDownOnScrollbarHandle false), so nothing is captured and they
-            // just recompose normally.
-            var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
-            if (scrollbar is { mouseDownOnScrollbarHandle: true })
-            {
-                rowListDragHandoff = scrollbar.mouseDownStartY;
-            }
-            RequestRecompose();
-        }
+        // Both views (row-list-rework S1 read view, S2 editor view): rows are custom
+        // ScribeRowElements drawn in the interactive pass, which the BeginClip scissor clips
+        // natively. Scrolling is therefore the plain vanilla idiom -- shift the content parent's
+        // fixedY and recalc; every row's renderY (and its hit-test absY) follows in one call, with
+        // no cull, no recompose, and no drag-handoff needed. This is the whole payoff of the
+        // rework: smooth sub-pixel scrolling for free, identical in both views (task 3.4). The
+        // one floating edit input is a child of the same content parent, so it scrolls in lockstep
+        // with the row it sits on.
+        rowListContentBounds.fixedY = 0 - value;
+        rowListContentBounds.CalcWorldBounds();
     }
 
     public override void OnRenderGUI(float deltaTime)
@@ -410,11 +330,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         StopAutosaveTick();
         IsEditorMode = editorMode;
-        draggedBlockIndex = null;
-        hoverTargetIndex = null;
+        focusedEditIndex = null;
         rowListScrollValue = 0;
         pendingRecomposeAction = null;
-        rowListDragHandoff = null;
 
         if (editorMode)
         {
@@ -473,20 +391,19 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         var blocks = lectern.Document.Blocks;
         double rowSpacing = ScaledRowSpacing;
-        double listWidth = clientConfig.ReadListWidth;
+        double listWidth = clientConfig.RowListWidth;
         double y = clientConfig.TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = Vintagestory.API.Client.ElementSizing.FitToChildren;
 
-        // Pass 1: measure every row's position/height. Unlike the editor view (and the old read
-        // view), the read view now draws each row as a ScribeRowElement in the interactive pass,
-        // which the dialog's BeginClip scissor clips NATIVELY (row-list-rework S1) -- so there is
-        // no viewport culling and no viewport-relative Y here: every row is composed once at its
-        // absolute content Y, and scrolling is a plain parent-fixedY shift (see OnRowListScroll's
-        // read-view branch and SetupRowListScrollbar). Row height = the wrapped text height plus
-        // the ruling overhead the row draws around it (ScribeRowElement.RulingOverhead).
+        // Pass 1: measure every row's position/height. Each row draws as a ScribeRowElement in the
+        // interactive pass, which the dialog's BeginClip scissor clips NATIVELY (row-list-rework)
+        // -- so there is no viewport culling and no viewport-relative Y here: every row is composed
+        // once at its absolute content Y, and scrolling is a plain parent-fixedY shift (see
+        // OnRowListScroll and SetupRowListScrollbar). Row height = the wrapped text height plus
+        // the ruling overhead the row draws around it. Both views now share this idiom (task 3.4).
         var rowYs = new double[blocks.Count];
         var rowHeights = new double[blocks.Count];
         double contentY = 0;
@@ -599,42 +516,26 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     /// <summary>Post-Compose scrollbar wiring shared by both views. Sets the mouse-wheel step to
     /// one task-row height (so a notch scrolls one row, not the engine default ~2 -- playtest
-    /// feedback 2026-07-20), tells the scrollbar its visible/total heights, restores the real
-    /// scroll position, and -- if a thumb-drag was in progress when this recompose was triggered
-    /// -- hands the drag grab off to this freshly composed scrollbar so the gesture survives the
-    /// rebuild (see <see cref="rowListDragHandoff"/>/<see cref="OnRowListScroll"/>).</summary>
+    /// feedback 2026-07-20), tells the scrollbar its visible/total heights, and restores the real
+    /// scroll position.</summary>
     private void SetupRowListScrollbar(double contentY)
     {
         // SetHeights synchronously fires OnRowListScroll(0) via the scrollbar's own
         // change-notify plumbing (GuiElementScrollbar.SetNewTotalHeight -> TriggerChanged),
         // regardless of the real scroll position -- isComposingRowList suppresses that spurious
-        // call so it can't snap the list back to the top or trigger a re-entrant recompose. The
-        // real scroll position is reapplied right after via CurrentYPosition's public setter (no
-        // callback re-entrancy) so the thumb sits at the right spot.
+        // call so it can't snap the list back to the top. The real scroll position is reapplied
+        // right after via CurrentYPosition's public setter (no callback re-entrancy) so the thumb
+        // sits at the right spot.
         //
-        // This method only positions the THUMB; it does not itself shift the content parent. The
-        // two views then differ on how the rows follow (row-list-rework S1): the EDITOR view leaves
-        // fixedY at 0 and bakes rows at a viewport-relative Y (a parent shift on top of that would
-        // double-offset them -- design.md Decision 4, third correction), whereas the READ view sets
-        // rowListContentBounds.fixedY = -scrollValue itself right after calling this (native-clip
-        // path), since its ScribeRowElements are composed at absolute Y. Keep that read-view shift
-        // at the ComposeReadView call site, not here, so this shared helper stays view-agnostic.
+        // This method only positions the THUMB; the content parent's fixedY shift (which actually
+        // slides the rows to the scrolled position, native-clip path) is applied by the caller
+        // right after -- both views compose their ScribeRowElements at absolute Y and scroll by
+        // that parent shift (row-list-rework, task 3.4), so this shared helper stays view-agnostic.
         isComposingRowList = true;
         var scrollbar = (ScribeRowListScrollbar)SingleComposer.GetScrollbar("rowListScrollbar");
         scrollbar.RowStep = clientConfig.TaskRowHeight * clientConfig.TextSizeScale;
         scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
-
-        // Reattach an in-progress thumb-drag to this new scrollbar element (see OnRowListScroll):
-        // mark it as being dragged and restore the same grab offset, so the engine's ongoing
-        // OnMouseMove stream keeps driving it instead of the drag dying with the old element.
-        if (rowListDragHandoff is { } grabOffset)
-        {
-            scrollbar.mouseDownOnScrollbarHandle = true;
-            scrollbar.mouseDownStartY = grabOffset;
-            rowListDragHandoff = null;
-        }
-
         isComposingRowList = false;
     }
 
@@ -657,57 +558,42 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         if (scratchDocument is null) return;
 
         double rowSpacing = ScaledRowSpacing;
-        double listWidth = clientConfig.EditorListWidth;
+        double listWidth = clientConfig.RowListWidth;
         double y = clientConfig.TopContentGap;
 
         var dialogBounds = DialogBounds();
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = Vintagestory.API.Client.ElementSizing.FitToChildren;
 
-        // See the matching comment in ComposeReadView for the clip/scrollbar idiom, and for why
-        // BeginClip/PushScissor doesn't visually clip this list on its own (RowListCullBuffer's
-        // doc comment) -- same two-pass measure-then-cull structure here, just with
-        // ScribeBlockRowCell.Compose's multi-element rows instead of a single AddStaticText per
-        // row.
         var blocks = scratchDocument.Blocks;
-        composedNoteRowHeights.Clear();
 
-        // Pass 1: measure every row's position/height regardless of scroll position -- same
-        // reasoning as ComposeReadView's pass 1.
+        // Keep the focused-row index in range if the document shrank (e.g. an Add-then-something
+        // that removed a row) -- a stale index would suppress the wrong row's label or place the
+        // input off the list. Null it out entirely if there are no rows.
+        if (focusedEditIndex is { } fi && (fi < 0 || fi >= blocks.Count))
+        {
+            focusedEditIndex = blocks.Count == 0 ? null : System.Math.Clamp(fi, 0, blocks.Count - 1);
+        }
+
+        // Pass 1: measure every row's position/height at its ABSOLUTE content Y. Editor rows are
+        // now the same custom-drawn ScribeRowElement as the read view (row-list-rework S2), drawn
+        // in the interactive pass and clipped natively by BeginClip -- so, exactly like
+        // ComposeReadView, there is no viewport culling and no viewport-relative Y: every row is
+        // composed once at its absolute Y and scrolling is a plain parent-fixedY shift (task 3.4).
+        // Height comes from the shared ScribeRowElement.RowHeightFixed so a row measures identically
+        // in both views (task 2.3).
         var rowYs = new double[blocks.Count];
         var rowHeights = new double[blocks.Count];
         double contentY = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            var block = blocks[i];
-            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
-
-            // Task rows (GuiElementTextInput) are single-line by design and never wrap, so the
-            // fixed height is correct as-is. Text-section rows (GuiElementTextArea) DO wrap and
-            // grow past this height the moment ApplyValues seeds their text below -- measure
-            // ahead so later rows lay out at the height the text area will actually end up
-            // being, not the pre-growth constant (confirmed live: an unmeasured long note
-            // overlaps "Text Size"/"Collapse" below it). Recorded per-index so OnRowTextChanged
-            // can tell whether a live edit has changed the wrapped height enough to need a
-            // recompose (see OnRowTextChanged). Recorded for every row regardless of whether
-            // pass 2 below actually composes it, so a note scrolled out of view still reports
-            // its real height if scrolled back into view without an intervening edit.
-            double rowHeight = minHeight;
-            if (!block.IsTask)
-            {
-                double textWidth = ScribeBlockRowCell.TextWidth(listWidth, isTask: false, showDragHandle: true, clientConfig);
-                rowHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, block.Text, RowFont(), textWidth, minHeight);
-                composedNoteRowHeights[i] = rowHeight;
-            }
-
             rowYs[i] = contentY;
-            rowHeights[i] = rowHeight;
-            contentY += rowHeight + rowSpacing;
+            rowHeights[i] = ScribeRowElement.RowHeightFixed(capi, blocks[i], listWidth, RowFont(), clientConfig);
+            contentY += rowHeights[i] + rowSpacing;
         }
 
+        // Clamp the restored scroll position against the real content height (same as ComposeReadView).
         rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - clientConfig.VisibleListHeight));
-        double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
-        double windowBottom = rowListScrollValue + clientConfig.VisibleListHeight + RowListCullBuffer;
 
         var clipBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.VisibleListHeight);
         var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
@@ -720,58 +606,60 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .BeginClip(clipBounds)
                 .BeginChildElements(contentBounds);
 
-        // Pass 2: only compose rows (and their dividers) FULLY CONTAINED within the buffered
-        // window -- see the matching comment in ComposeReadView for why full containment
-        // (not mere overlap) is required now that nothing here visually clips a composed
-        // row's rendering. rowListComposedFirstIndex/LastIndex record the actual composed
-        // range so ApplyValues (below) and HitTestRowIndex (drag-reorder) know which indices
-        // have live elements -- an index outside this range was never added to the composer
-        // this pass. Note: a single row taller than VisibleListHeight itself (an unusually
-        // long note at a large text-size scale) can never be fully contained at any scroll
-        // position and will never render -- an inherent limit of cull-don't-clip, not
-        // something this pass introduces; showing it would need real clipping, which is
-        // confirmed unavailable here (see RowListCullBuffer's doc comment).
-        rowListComposedFirstIndex = -1;
-        rowListComposedLastIndex = -1;
+        // Compose every row at its absolute content Y as a ScribeRowElement in Edit mode. Each row
+        // draws its checkbox (task) + text label + ruling. The focused row suppresses its own text
+        // draw (the single floating input paints the text for it instead -- design.md Decision 1).
+        editInput = null;
+        editInputIndex = null;
         for (int i = 0; i < blocks.Count; i++)
         {
-            double rowTop = rowYs[i];
-            double rowBottom = rowTop + rowHeights[i];
-            if (rowTop < windowTop || rowBottom > windowBottom) continue;
+            var block = blocks[i];
+            bool isFocusedRow = focusedEditIndex == i;
+            var rowBounds = ElementBounds.Fixed(0, rowYs[i], listWidth, rowHeights[i]);
 
-            // Viewport-relative Y (rowTop - scroll), same as ComposeReadView pass 2 -- both
-            // render passes must bake at the scrolled coordinate. A mixed static+interactive row
-            // (text-box border is static, its text content interactive; the checkbox outline is
-            // static, its check interactive) would otherwise scroll only its interactive halves
-            // and leave the chrome frozen (design.md Decision 4, third correction). Culling
-            // guarantees rowTop >= scroll, so this is always >= 0.
-            double rowDrawTop = rowTop - rowListScrollValue;
-            var rowBounds = ElementBounds.Fixed(0, rowDrawTop, listWidth, rowHeights[i]);
+            SingleComposer.AddInteractiveElement(
+                new ScribeRowElement(
+                    capi,
+                    rowBounds,
+                    ScribeRowMode.Edit,
+                    blockIndex: i,
+                    isTask: block.IsTask,
+                    done: block.Done,
+                    text: block.Text,
+                    font: RowFont(),
+                    config: clientConfig,
+                    onToggleClicked: block.IsTask ? OnEditViewToggleTask : null,
+                    onRequestEdit: OnRequestEditRow,
+                    suppressText: isFocusedRow),
+                ScribeBlockRowCell.TextKey(i));
 
-            ScribeBlockRowCell.Compose(
-                SingleComposer,
-                blocks[i],
-                i,
-                rowBounds,
-                RowFont(),
-                showDragHandle: true,
-                OnRowToggle,
-                OnRowTextChanged,
-                OnRowDelete,
-                clientConfig,
-                OnRowDragMouseDown,
-                OnRowDragMouseUp,
-                onTogglePin: OnRowTogglePin);
+            if (i < blocks.Count - 1) AddRowDivider(rowYs[i] + rowHeights[i], listWidth);
 
-            if (i < blocks.Count - 1) AddRowDivider(rowDrawTop + rowHeights[i], listWidth);
-
-            if (rowListComposedFirstIndex == -1) rowListComposedFirstIndex = i;
-            rowListComposedLastIndex = i;
+            // The single floating input goes onto the focused row, aligned to where that row's
+            // static label would draw via the SAME RowTextLayout metric the element uses -- so the
+            // handoff between label and input has no baseline/x/font jump (design.md Decision 1/5,
+            // task 3.2). It is a child of contentBounds like the rows, so it scrolls with them.
+            if (isFocusedRow)
+            {
+                // Input occupies the row's text column (x/width from the shared RowTextLayout, so
+                // it aligns horizontally with where the static label draws -- design.md Decision 5)
+                // at the row's full height. The base single-line input vertically centers its text
+                // within these bounds, which closely tracks the label's top-padded single line for
+                // a task-height row; exact baseline is a flagged playtest item (design.md risk).
+                var layout = RowTextLayout.For(listWidth, block.IsTask, RowFont(), clientConfig);
+                var inputBounds = ElementBounds.Fixed(layout.TextX, rowYs[i], layout.TextWidth, rowHeights[i]);
+                editInput = new ScribeRowTextInput(
+                    capi, inputBounds, OnEditInputTextChanged, RowFont(),
+                    onCommitAndAdvance: OnEditCommitAndAdvance,
+                    onCommitAndRetreat: OnEditCommitAndRetreat,
+                    onRevert: OnEditRevert,
+                    onBlur: OnEditBlur);
+                SingleComposer.AddInteractiveElement(editInput, "rowEditInput");
+                editInputIndex = i;
+            }
         }
 
         rowListContentBounds = contentBounds;
-        rowListComposedRangeTop = windowTop;
-        rowListComposedRangeBottom = windowBottom;
 
         SingleComposer
                 .EndChildElements()
@@ -813,15 +701,25 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         SetupRowListScrollbar(contentY);
 
-        // Seed row values (toggle state, text) only after Compose() has calculated real bounds --
-        // see the doc comment on ScribeBlockRowCell.Compose for why doing this earlier corrupts
-        // the text elements' auto-height calc and, transitively, the whole dialog's outer size.
-        // Only rows actually composed this pass (rowListComposedFirstIndex..LastIndex) have live
-        // elements to seed -- a culled-out index has none, and ApplyValues would throw on a
-        // GetTextInput/GetTextArea call against a missing key.
-        for (int i = rowListComposedFirstIndex; i != -1 && i <= rowListComposedLastIndex; i++)
+        // Native clipping means scrolling is a parent-fixedY shift; apply the restored scroll
+        // position now (SetupRowListScrollbar set the thumb but fires no scroll callback), so a
+        // recompose keeps its scroll offset. Same as ComposeReadView's tail.
+        rowListContentBounds.fixedY = 0 - rowListScrollValue;
+        rowListContentBounds.CalcWorldBounds();
+
+        // Seed the single floating input's text and focus it -- only AFTER Compose() has real
+        // bounds (VSAPI-NOTES: SetValue before Compose corrupts the text-wrap/auto-height math).
+        // suppressBlurCommit guards the FocusElement below: focusing the input can steal focus
+        // from a prior element and, on the next recompose, the teardown blur must not double-commit.
+        if (focusedEditIndex is { } idx && editInput is not null && idx >= 0 && idx < blocks.Count)
         {
-            ScribeBlockRowCell.ApplyValues(SingleComposer, blocks[i], i);
+            suppressBlurCommit = true;
+            editInput.SetValue(blocks[idx].Text);
+            // FocusElement (not OnFocusGained directly) so Compose()'s default
+            // focusFirstElement:true focus is properly transferred rather than leaving two
+            // elements marked HasFocus (VSAPI-NOTES recompose-focus pattern).
+            SingleComposer.FocusElement(editInput.TabIndex);
+            suppressBlurCommit = false;
         }
     }
 
@@ -837,101 +735,146 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         return true;
     }
 
-    private void OnRowToggle(int index)
+    /// <summary>Editor-view task checkbox click: toggle done on the scratch document (lock-gated
+    /// edit path -- the editor holds the lock) and mark dirty so the autosave/commit picks it up.
+    /// A recompose re-bakes the row with the new check state.</summary>
+    private void OnEditViewToggleTask(int index)
     {
         scratchDocument?.ToggleTask(index);
-        isDirty = true;
-    }
-
-    private void OnRowTogglePin(int index)
-    {
-        scratchDocument?.TogglePinned(index);
-        isDirty = true;
-    }
-
-    private void OnRowTextChanged(int index, string text)
-    {
-        scratchDocument?.SetBlockText(index, text);
-        isDirty = true;
-
-        // Recompose immediately when a note's wrapped height has changed -- otherwise the
-        // textarea grows/shrinks its own box live (GuiElementTextArea.Autoheight) while every
-        // row below it stays put until the next unrelated recompose, visibly overlapping
-        // (confirmed live: screenshots/debug/2026-07-18_14-32-1[3-6]_editor-note-normalwords.png).
-        // Scoped to notes only, since a task's GuiElementTextInput never wraps/grows.
-        var block = scratchDocument?.Blocks[index];
-        if (block is null || block.IsTask) return;
-
-        double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
-        double textWidth = ScribeBlockRowCell.TextWidth(clientConfig.EditorListWidth, isTask: false, showDragHandle: true, clientConfig);
-        double newHeight = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), textWidth, minHeight);
-
-        if (composedNoteRowHeights.TryGetValue(index, out double composedHeight) && newHeight != composedHeight)
-        {
-            RequestRecompose();
-        }
-    }
-
-    /// <summary>
-    /// Recomposes the editor view without disturbing whichever text row the player is actively
-    /// typing in -- a plain recompose (<c>GuiComposer.Compose()</c>, the default
-    /// <c>focusFirstElement: true</c>) yanks focus/caret to row 0's element, which would make it
-    /// impossible to keep typing past the point a note first wraps to a new line. Captures the
-    /// focused row's key and caret position beforehand and restores both on the freshly composed
-    /// element (a recompose creates brand-new <see cref="GuiElement"/> instances, so the old
-    /// reference cannot simply be refocused).
-    /// </summary>
-    private void RecomposeEditorViewPreservingFocus()
-    {
-        int? focusedIndex = null;
-        int caretPosInLine = 0;
-        int caretPosLine = 0;
-
-        var blocks = scratchDocument?.Blocks;
-        if (blocks is not null)
-        {
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                if (blocks[i].IsTask) continue;
-
-                var textArea = SingleComposer.GetTextArea(ScribeBlockRowCell.TextKey(i));
-                if (textArea is { HasFocus: true })
-                {
-                    focusedIndex = i;
-                    caretPosInLine = textArea.CaretPosInLine;
-                    caretPosLine = textArea.CaretPosLine;
-                    break;
-                }
-            }
-        }
-
-        ComposeEditorView();
-
-        if (focusedIndex is { } index)
-        {
-            var textArea = SingleComposer.GetTextArea(ScribeBlockRowCell.TextKey(index));
-            if (textArea is not null)
-            {
-                // FocusElement (not OnFocusGained directly) so the element-0 focus that
-                // Compose()'s default focusFirstElement:true already applied gets properly
-                // unfocused first -- otherwise two elements end up marked HasFocus at once.
-                SingleComposer.FocusElement(textArea.TabIndex);
-                textArea.SetCaretPos(caretPosInLine, caretPosLine);
-            }
-        }
-    }
-
-    private void OnRowDelete(int index)
-    {
-        scratchDocument?.DeleteBlock(index);
         isDirty = true;
         RequestRecompose();
     }
 
+    /// <summary>A row's text column was clicked: float the single live input onto it. Commits the
+    /// previously-focused row first (blur-commit semantics), captures the new row's stored text for
+    /// Esc-revert, then recomposes so the input moves and the newly focused row suppresses its
+    /// label (task 3.2/3.3).</summary>
+    private void OnRequestEditRow(int index)
+    {
+        if (focusedEditIndex == index) return;
+
+        // Push any pending edit from the row we're leaving before moving focus (task 4.3-style
+        // commit-on-leave). FlushIfDirty is a no-op if nothing changed.
+        FlushIfDirty();
+
+        focusedEditIndex = index;
+        focusedEditOriginalText = scratchDocument is not null && index >= 0 && index < scratchDocument.Blocks.Count
+            ? scratchDocument.Blocks[index].Text
+            : "";
+
+        // Deferred recompose: this fires from inside the row element's OnMouseUpOnElement, which
+        // runs during GuiComposer's mouse dispatch loop -- same mid-dispatch hazard as every other
+        // recompose site here (see pendingRecomposeAction's doc comment).
+        RequestRecompose();
+    }
+
+    /// <summary>Live text-change callback for the single floating input: write straight through to
+    /// the focused row's block and mark dirty (the autosave tick / commit path serializes it).</summary>
+    private void OnEditInputTextChanged(string text)
+    {
+        if (focusedEditIndex is not { } index) return;
+        scratchDocument?.SetBlockText(index, text);
+        isDirty = true;
+    }
+
+    /// <summary>Enter: commit the focused row and advance to the next (task 4.1).</summary>
+    private bool OnEditCommitAndAdvance()
+    {
+        if (focusedEditIndex is not { } index || scratchDocument is null) return false;
+
+        FlushIfDirty();
+        int count = scratchDocument.Blocks.Count;
+        int next = System.Math.Min(index + 1, count - 1);
+        MoveEditFocusTo(next);
+        return true;
+    }
+
+    /// <summary>Shift+Tab: commit the focused row and retreat to the previous (task 4.2).</summary>
+    private bool OnEditCommitAndRetreat()
+    {
+        if (focusedEditIndex is not { } index || scratchDocument is null) return false;
+
+        FlushIfDirty();
+        int prev = System.Math.Max(index - 1, 0);
+        MoveEditFocusTo(prev);
+        return true;
+    }
+
+    /// <summary>Esc: revert the focused row to its stored text without committing (task 4.4). The
+    /// revert IS a change to the scratch document (it undoes the in-progress edit), so it is marked
+    /// dirty and will persist -- "no commit" means Esc itself doesn't force a flush, not that the
+    /// reverted value is discarded. Stays focused on the same row.</summary>
+    private bool OnEditRevert()
+    {
+        if (focusedEditIndex is not { } index || scratchDocument is null) return false;
+
+        scratchDocument.SetBlockText(index, focusedEditOriginalText);
+        isDirty = true;
+        editInput?.SetValue(focusedEditOriginalText);
+        return true;
+    }
+
+    /// <summary>Blur (genuine click-away, not a recompose-driven focus loss): commit the row's edit
+    /// (task 4.3). Skipped during a programmatic recompose focus transfer, where the caller already
+    /// flushed.</summary>
+    private void OnEditBlur()
+    {
+        if (suppressBlurCommit) return;
+        FlushIfDirty();
+    }
+
+    /// <summary>Moves the in-place edit focus to <paramref name="index"/> and recomposes so the
+    /// single input repositions onto that row. Captures the new row's stored text for Esc-revert.</summary>
+    private void MoveEditFocusTo(int index)
+    {
+        focusedEditIndex = index;
+        focusedEditOriginalText = scratchDocument is not null && index >= 0 && index < scratchDocument.Blocks.Count
+            ? scratchDocument.Blocks[index].Text
+            : "";
+        RequestRecompose();
+    }
+
+    /// <summary>
+    /// Recomposes the editor view without disturbing the in-place edit -- the focused row and its
+    /// caret position are captured before the rebuild and restored after (a recompose creates a
+    /// brand-new element tree, so the old input reference is gone -- VSAPI-NOTES recompose-focus
+    /// pattern). Without this, a plain recompose's <c>focusFirstElement: true</c> would yank focus
+    /// off the edited row.
+    /// </summary>
+    private void RecomposeEditorViewPreservingFocus()
+    {
+        int caretPos = 0;
+        int? caretRow = null;
+        if (editInput is { HasFocus: true } && editInputIndex is { } prevIndex)
+        {
+            caretPos = editInput.CaretPosInLine;
+            caretRow = prevIndex;
+        }
+
+        // The recompose itself tears down the old input; its blur must not commit (the value is
+        // already live on the scratch doc via OnEditInputTextChanged).
+        suppressBlurCommit = true;
+        ComposeEditorView();
+        suppressBlurCommit = false;
+
+        // ComposeEditorView already re-seeded + focused the input for focusedEditIndex (caret at
+        // end). Only restore the old caret when the recompose stayed on the SAME row -- a
+        // recompose that moved focus to a different row (Enter/Shift+Tab/click) should keep the
+        // new row's caret-at-end, not stamp the old position onto it.
+        if (caretRow is { } row && row == focusedEditIndex && editInput is not null)
+        {
+            editInput.SetCaretPos(System.Math.Min(caretPos, editInput.GetText().Length));
+        }
+    }
+
     private bool OnClickAddTask()
     {
-        scratchDocument?.AddTask(Lang.Get("scribe:scribe-gui-newtask-placeholder"));
+        if (scratchDocument is null) return true;
+        scratchDocument.AddTask(Lang.Get("scribe:scribe-gui-newtask-placeholder"));
         isDirty = true;
+        // Focus the newly added row so the player can immediately type over the placeholder.
+        focusedEditIndex = scratchDocument.Blocks.Count - 1;
+        focusedEditOriginalText = Lang.Get("scribe:scribe-gui-newtask-placeholder");
         RequestRecompose();
         return true;
     }
@@ -953,111 +896,20 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         return true;
     }
 
-    // ---------------- Reorder (mouse-drag) ----------------
-
-    private void OnRowDragMouseDown(int index, MouseEvent args)
-    {
-        draggedBlockIndex = index;
-        hoverTargetIndex = index;
-        args.Handled = true;
-    }
-
-    /// <summary>Wired to <see cref="ScribeDragHandleElement.OnDragMouseUp"/>, which only fires
-    /// when the mouse-up lands within THIS row's own drag-handle bounds (checked by the
-    /// element's own <c>IsPositionInside</c>, inherited from the base <c>GuiElement.OnMouseUp</c>).
-    /// The dialog-level <see cref="OnMouseUp"/> below has no equivalent per-row bounds check --
-    /// it only tracks <see cref="draggedBlockIndex"/>/<see cref="hoverTargetIndex"/> state, which
-    /// persists regardless of exactly where the release landed -- so this can't be folded into
-    /// it without duplicating that per-row hit-test. <c>ScribeDragHandleElement</c> is a minimal
-    /// custom element (base <c>GuiElementStaticText</c>), not a real button/switch widget, so
-    /// unlike those it does not mark <c>Handled</c> on its own; without this, releasing over the
-    /// drag handle would leave the mouse-up unhandled and risk a click-through to world
-    /// interaction (the same reason the title bar's own close icon explicitly sets
-    /// <c>Handled = true</c> on its own hit, confirmed via decompile).</summary>
-    private void OnRowDragMouseUp(int index, MouseEvent args)
-    {
-        args.Handled = true;
-    }
-
-    public override void OnMouseMove(MouseEvent args)
-    {
-        base.OnMouseMove(args);
-
-        if (draggedBlockIndex is null || scratchDocument is null) return;
-
-        int newTarget = HitTestRowIndex(args.Y);
-        if (newTarget != hoverTargetIndex)
-        {
-            hoverTargetIndex = newTarget;
-        }
-    }
-
     public override void OnMouseUp(MouseEvent args)
     {
         base.OnMouseUp(args);
 
+        // The text-size slider defers its recompose to here (see textSizePendingRecompose): a
+        // slider drag rebuilds the slider element every intermediate value, so recomposing inside
+        // the change callback would orphan the drag after one step. base.OnMouseUp has already
+        // returned, so the composer's dispatch loop is finished and a direct recompose is safe.
         if (textSizePendingRecompose)
         {
             textSizePendingRecompose = false;
             capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName);
-            ComposeEditorView();
-            return;
+            RecomposeEditorViewPreservingFocus();
         }
-
-        // The thumb-drag is over: base.OnMouseUp above cleared the current scrollbar's
-        // mouseDownOnScrollbarHandle. Clear any not-yet-consumed drag handoff too, so a recompose
-        // still queued from the drag's last frame (see OnRowListScroll) doesn't re-grab the new
-        // scrollbar after the button is already up. The queued recompose still runs and bakes the
-        // rows at the final scroll position; it just won't reattach a drag that has ended.
-        rowListDragHandoff = null;
-
-        if (draggedBlockIndex is null || scratchDocument is null)
-        {
-            draggedBlockIndex = null;
-            hoverTargetIndex = null;
-            return;
-        }
-
-        int from = draggedBlockIndex.Value;
-        int to = hoverTargetIndex ?? from;
-
-        draggedBlockIndex = null;
-        hoverTargetIndex = null;
-
-        if (from != to)
-        {
-            scratchDocument.MoveBlock(from, to);
-            isDirty = true;
-            ComposeEditorView();
-        }
-    }
-
-    private int HitTestRowIndex(int mouseY)
-    {
-        if (scratchDocument is null || scratchDocument.Blocks.Count == 0) return 0;
-
-        // Row keys are laid out in the same order as scratchDocument.Blocks; look up each
-        // row's live bounds by key rather than recomputing layout math here. Task rows key a
-        // GuiElementTextInput, text-section rows a GuiElementTextArea -- GetElement avoids
-        // assuming either kind (GetTextInput's cast throws on a text-section row). A
-        // viewport-culled-out row has no element under its key at all (see
-        // rowListComposedFirstIndex/LastIndex), which this loop already tolerates via the
-        // null-bounds `continue` below -- it was originally written for "not yet Compose()'d
-        // this frame", but the same check happens to cover "culled out entirely" too.
-        for (int i = 0; i < scratchDocument.Blocks.Count; i++)
-        {
-            var bounds = SingleComposer.GetElement(ScribeBlockRowCell.TextKey(i))?.Bounds;
-            if (bounds is null) continue;
-
-            double midY = bounds.absY + bounds.OuterHeight / 2;
-            if (mouseY < midY) return i;
-        }
-
-        // Falls through when the mouse is below every composed row's midpoint -- e.g. dragging
-        // past the bottom of the currently-culled window. rowListComposedLastIndex (the last
-        // index that actually has live elements this pass) is the correct target, not
-        // Blocks.Count - 1: with culling, the last block may not be the last *composed* row.
-        return rowListComposedLastIndex != -1 ? rowListComposedLastIndex : 0;
     }
 
     // ---------------- Autosave (throttled) ----------------

@@ -101,13 +101,14 @@ public sealed class ScribeClientConfig
 
     // ---------------- Row-list width ----------------
 
-    /// <summary>Read-view row-list width.</summary>
-    public double ReadListWidth = 300;
-
-    /// <summary>Editor-view row-list width. Wider than the read view to leave room for the drag
-    /// handle/checkbox/pin/delete icon gutters that the read view's plain static text doesn't
-    /// need.</summary>
-    public double EditorListWidth = 500;
+    /// <summary>Row-list width, shared by BOTH the read view and the editor view so switching
+    /// modes never resizes the list (row-list-rework S2, tasks 5.1/5.2). Replaces the former
+    /// separate <c>ReadListWidth</c>/<c>EditorListWidth</c> fields -- now that the editor edits
+    /// in place on the same custom-drawn rows as the read view (no drag-handle/pin/delete icon
+    /// gutters eating width), both views compose at one width. An existing on-disk config that
+    /// still carries the two old keys loads fine: <c>LoadModConfig</c>'s Newtonsoft deserialize
+    /// silently ignores unknown JSON keys, and an absent new key falls back to this default.</summary>
+    public double RowListWidth = 500;
 
     // ---------------- Row cell dimensions (ScribeBlockRowCell) ----------------
 

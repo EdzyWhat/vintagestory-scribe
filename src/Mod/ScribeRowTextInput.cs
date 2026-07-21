@@ -48,6 +48,10 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     /// <summary>Escape pressed: revert this row to its last stored text (no commit).</summary>
     private readonly Func<bool> onRevert;
 
+    /// <summary>Focus lost without an Enter/Shift+Tab/Esc (e.g. the player clicked away): commit
+    /// the row's edit. May be null when the dialog does not need a blur hook.</summary>
+    private readonly Action? onBlur;
+
     public ScribeRowTextInput(
         ICoreClientAPI capi,
         ElementBounds bounds,
@@ -55,12 +59,23 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
         CairoFont font,
         Func<bool> onCommitAndAdvance,
         Func<bool> onCommitAndRetreat,
-        Func<bool> onRevert)
+        Func<bool> onRevert,
+        Action? onBlur = null)
         : base(capi, bounds, onTextChanged, font)
     {
         this.onCommitAndAdvance = onCommitAndAdvance;
         this.onCommitAndRetreat = onCommitAndRetreat;
         this.onRevert = onRevert;
+        this.onBlur = onBlur;
+    }
+
+    public override void OnFocusLost()
+    {
+        base.OnFocusLost();
+        // Blur commits the pending edit (task 4.3). The dialog guards against a recompose-driven
+        // blur double-committing; a real click-away commit is idempotent anyway (FlushIfDirty is a
+        // no-op when nothing changed).
+        onBlur?.Invoke();
     }
 
     public override void OnKeyDown(ICoreClientAPI api, KeyEvent args)

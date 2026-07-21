@@ -35,9 +35,23 @@ public sealed class ScribeRowElement : GuiElement
     private readonly CairoFont font;
     private readonly ScribeClientConfig config;
 
-    /// <summary>Invoked with this row's block index when its checkbox is clicked (read view: sends
-    /// the lock-free toggle). Null for a note (no checkbox).</summary>
+    /// <summary>Invoked with this row's block index when its checkbox is clicked. Read view sends
+    /// the lock-free toggle; editor view toggles the scratch document (the dialog decides which).
+    /// Null for a note (no checkbox).</summary>
     private readonly System.Action<int>? onToggleClicked;
+
+    /// <summary>Editor view only: invoked with this row's block index when the player clicks the
+    /// row's text area, asking the dialog to float the single live edit input onto this row. Null
+    /// in read view (nothing but the checkbox is interactive there).</summary>
+    private readonly System.Action<int>? onRequestEdit;
+
+    /// <summary>Editor view only: when <c>true</c>, this row bakes its checkbox + ruling but SKIPS
+    /// drawing its text pixels for this compose -- because the single floating <c>ScribeRowTextInput</c>
+    /// is positioned over this row and is painting the text instead, and drawing both would
+    /// double-draw (design.md Decision 1). "Suppress" is a draw-time skip only; <c>text</c>/the
+    /// underlying block data is untouched. The element re-bakes (unsuppressed) on the next compose
+    /// once focus moves off this row.</summary>
+    private readonly bool suppressText;
 
     // Not readonly: generateTexture(surface, ref rowTexture) takes it by ref (loads/updates the
     // GL texture in place). The instance is created once in the ctor and never reassigned by us.
@@ -53,7 +67,9 @@ public sealed class ScribeRowElement : GuiElement
         string text,
         CairoFont font,
         ScribeClientConfig config,
-        System.Action<int>? onToggleClicked)
+        System.Action<int>? onToggleClicked,
+        System.Action<int>? onRequestEdit = null,
+        bool suppressText = false)
         : base(capi, bounds)
     {
         this.mode = mode;
@@ -64,6 +80,8 @@ public sealed class ScribeRowElement : GuiElement
         this.font = font;
         this.config = config;
         this.onToggleClicked = onToggleClicked;
+        this.onRequestEdit = onRequestEdit;
+        this.suppressText = suppressText;
         rowTexture = new LoadedTexture(capi);
     }
 
@@ -128,10 +146,15 @@ public sealed class ScribeRowElement : GuiElement
 
         // Text sits below the top padding, in the reserved text column. Read-view text wraps to the
         // available text width, matching the old AddStaticText behavior (tasks are typically single
-        // line; a long note wraps and the row was measured tall enough to hold it).
-        font.SetupContext(ctx);
-        api.Gui.Text.AutobreakAndDrawMultilineTextAt(
-            ctx, font, text, scaled(layout.TextX), topPad, scaled(layout.TextWidth));
+        // line; a long note wraps and the row was measured tall enough to hold it). In edit mode a
+        // focused row suppresses its own text draw (the floating input paints it instead) -- the
+        // checkbox + ruling below still draw so only the text pixels are skipped (design.md Dec. 1).
+        if (!suppressText)
+        {
+            font.SetupContext(ctx);
+            api.Gui.Text.AutobreakAndDrawMultilineTextAt(
+                ctx, font, text, scaled(layout.TextX), topPad, scaled(layout.TextWidth));
+        }
 
         DrawRuling(ctx, width, height);
 
@@ -223,32 +246,47 @@ public sealed class ScribeRowElement : GuiElement
     {
         base.OnMouseUpOnElement(api, args);
 
-        // Read view: only the checkbox is interactive; everything else in the row is inert. The
-        // composer only dispatches here when IsPositionInside passes, which already ANDs
+        // The composer only dispatches here when IsPositionInside passes, which already ANDs
         // InsideClipBounds -- so a row scrolled outside the clip region rejects the hit for free.
-        if (mode != ScribeRowMode.Read || !isTask || onToggleClicked is null) return;
 
-        // Reconstruct the drawn glyph's on-screen rect (matching DrawCheckboxGlyph's math), then
-        // expand it by ReadCheckboxHitboxScale on BOTH axes so the clickable target is ~20% larger
-        // than the drawn glyph -- a forgiving target (ease-of-use) without accepting a click
-        // anywhere on a tall note row. Clamped to the row bounds so it never leaves the element.
-        var layout = RowTextLayout.For(Bounds.fixedWidth, isTask, font, config);
-        double colX = Bounds.absX + scaled(layout.CheckboxX);
-        double colSize = scaled(layout.CheckboxSize);
-        double glyphSize = colSize * config.ReadCheckboxGlyphFill;
-        double glyphInset = (colSize - glyphSize) / 2;
-        double glyphX = colX + glyphInset;
-        double glyphY = Bounds.absY + scaled(TopPadFixed(config)) + glyphInset;
-
-        double expand = glyphSize * (config.ReadCheckboxHitboxScale - 1) / 2;
-        double hitLeft = System.Math.Max(Bounds.absX, glyphX - expand);
-        double hitRight = System.Math.Min(Bounds.absX + Bounds.InnerWidth, glyphX + glyphSize + expand);
-        double hitTop = System.Math.Max(Bounds.absY, glyphY - expand);
-        double hitBottom = System.Math.Min(Bounds.absY + Bounds.InnerHeight, glyphY + glyphSize + expand);
-
-        if (args.X >= hitLeft && args.X <= hitRight && args.Y >= hitTop && args.Y <= hitBottom)
+        // Checkbox (task rows, both views): reconstruct the drawn glyph's on-screen rect (matching
+        // DrawCheckboxGlyph's math), then expand it by ReadCheckboxHitboxScale on BOTH axes so the
+        // clickable target is ~20% larger than the drawn glyph -- a forgiving target (ease-of-use)
+        // without accepting a click anywhere on a tall note row. Clamped to the row bounds so it
+        // never leaves the element.
+        if (isTask && onToggleClicked is not null)
         {
-            onToggleClicked(blockIndex);
+            var layout = RowTextLayout.For(Bounds.fixedWidth, isTask, font, config);
+            double colX = Bounds.absX + scaled(layout.CheckboxX);
+            double colSize = scaled(layout.CheckboxSize);
+            double glyphSize = colSize * config.ReadCheckboxGlyphFill;
+            double glyphInset = (colSize - glyphSize) / 2;
+            double glyphX = colX + glyphInset;
+            double glyphY = Bounds.absY + scaled(TopPadFixed(config)) + glyphInset;
+
+            double expand = glyphSize * (config.ReadCheckboxHitboxScale - 1) / 2;
+            double hitLeft = System.Math.Max(Bounds.absX, glyphX - expand);
+            double hitRight = System.Math.Min(Bounds.absX + Bounds.InnerWidth, glyphX + glyphSize + expand);
+            double hitTop = System.Math.Max(Bounds.absY, glyphY - expand);
+            double hitBottom = System.Math.Min(Bounds.absY + Bounds.InnerHeight, glyphY + glyphSize + expand);
+
+            if (args.X >= hitLeft && args.X <= hitRight && args.Y >= hitTop && args.Y <= hitBottom)
+            {
+                onToggleClicked(blockIndex);
+                args.Handled = true;
+                return;
+            }
+        }
+
+        // Read view: nothing but the checkbox is interactive; a text click is inert.
+        if (mode != ScribeRowMode.Edit) return;
+
+        // Editor view: a click anywhere else on the row (the text column) asks the dialog to float
+        // the single live edit input onto this row. The checkbox hit above already returned, so a
+        // fall-through here is a text-area click.
+        if (onRequestEdit is not null)
+        {
+            onRequestEdit(blockIndex);
             args.Handled = true;
         }
     }
@@ -267,6 +305,7 @@ public enum ScribeRowMode
     /// <summary>Read view: the checkbox toggles done (lock-free); nothing else is interactive.</summary>
     Read,
 
-    /// <summary>Editor view (S2, not yet wired): edit-in-place via a single floating text field.</summary>
+    /// <summary>Editor view: the checkbox toggles done (scratch edit) and clicking the text column
+    /// floats the single live <see cref="ScribeRowTextInput"/> onto the row for edit-in-place.</summary>
     Edit,
 }
