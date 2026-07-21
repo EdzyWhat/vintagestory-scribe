@@ -60,7 +60,7 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       `rowListContentBounds` provide the scrollbar control/value plumbing; actual visual
       hiding of off-screen rows comes from 3.2a's viewport culling, not from the clip
       itself.)
-- [ ] 3.2a Rework the row list to viewport-cull instead of relying on the engine's
+- [x] 3.2a Rework the row list to viewport-cull instead of relying on the engine's
       scissor for visual correctness: only add/compose rows (and their dividers) whose
       position falls within the current visible scrolled window, recomposing on scroll
       rather than assuming `BeginClip` hides the rest. (Two-pass measure/cull structure
@@ -191,6 +191,16 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       interactive pass. The two-pass culling structure itself stands and is reused; the
       `fixedY`-shift-for-visual-movement assumption does not. Superseded by 3.4a (switch
       to viewport-relative row Y). Leaving unchecked until 3.4a lands and 3.5 re-verifies.
+
+      **Re-closed 2026-07-20:** 3.4a has landed. The two-pass measure/cull structure this
+      task built stands unchanged and is reused as-is — only the pass-2 row Y coordinate
+      moved from absolute-content to viewport-relative (`rowTop - scrollValue`), which is
+      3.4a's edit, not a rework of the culling itself. The full-containment cull test,
+      `isComposingRowList` guard, `HitTestRowIndex` last-composed-index fallback, and
+      `ApplyValues` composed-range seeding are all still in place and correct. Re-checked
+      rather than left open since the culling mechanism this task is about is done and
+      sound; the remaining "does it actually scroll correctly in-game" question belongs to
+      3.5's live pass, not to this structural task.
 - [x] 3.3 Confirm drag-reorder (`OnMouseMove`/`OnMouseUp`/`HitTestRowIndex`) still works
       correctly when the row list is scrolled away from its top position — hit-testing
       must account for scroll offset. (`HitTestRowIndex` already reads live
@@ -206,7 +216,7 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       per design.md's note that the original constraint no longer applies. Confirm with
       the user before removing it outright if any doubt remains about other reasons for
       the cap. (Raised to 300 as a looser sanity bound rather than removed outright.)
-- [ ] 3.4a Fix scroll not visually moving composed rows (design.md Decision 4, third
+- [x] 3.4a Fix scroll not visually moving composed rows (design.md Decision 4, third
       correction — confirmed live on Windows via the VSImGui slider tool, 2026-07-20).
       The current model shifts the content parent's `fixedY` (`0 - scrollValue`) and
       recalcs world bounds, but that only reaches the interactive render pass (`renderY`);
@@ -221,7 +231,17 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       must not reset caret). Re-confirm hit-testing after: `HitTestRowIndex` reads live
       `bounds.absY`, so the Y-model change must keep click targets aligned with what's
       drawn.
-- [ ] 3.4b Fix scrollbar thumb-drag dying after ~1px in both views (design.md Decision 4,
+      **Implemented 2026-07-20:** both `ComposeReadView` and `ComposeEditorView` pass 2 now
+      compose each row at `rowTop - rowListScrollValue` (viewport-relative), and the
+      end-of-compose `contentBounds.fixedY = 0 - scrollValue` / `CalcWorldBounds()` parent
+      shift was removed from both (a parent shift on top of the viewport-relative Y would
+      double-offset the rows). `OnRowListScroll` no longer nudges `fixedY` live either --
+      visual movement now comes solely from recomposing at the new scroll value. Row
+      dividers follow the same shifted Y. `HitTestRowIndex` is unchanged (still reads live
+      `bounds.absY`, which now reflects the composed-at-scrolled-Y coordinate). Clean
+      Debug+Release build, 35/35 Core.Tests. `VSAPI-NOTES.md`'s "static vs interactive
+      render pass" entry already documented this fix pattern. Live re-verify is 3.5's job.
+- [x] 3.4b Fix scrollbar thumb-drag dying after ~1px in both views (design.md Decision 4,
       fourth correction). `OnRowListScroll` calls `RequestRecompose()` the moment the
       viewport escapes the composed range, which rebuilds `SingleComposer` including a
       brand-new scrollbar element that never saw the mouse-down — orphaning the in-progress
@@ -229,6 +249,22 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       not sustained gestures). Fix follows the existing `textSizePendingRecompose`
       template: while the thumb is held, update `scrollValue`/`fixedY` live but defer the
       cull-triggered recompose to `OnMouseUp` instead of firing it mid-drag.
+      **Implemented 2026-07-20 (with a deviation from the wording above, forced by 3.4a):**
+      the original plan said "update `scrollValue`/`fixedY` live during the drag." Since
+      3.4a removed the parent-`fixedY` shift entirely (it only ever moved the interactive
+      pass, and did nothing for the all-static read view), there is no `fixedY` to nudge
+      live anymore -- attempting it would reintroduce the exact static-chrome-frozen glitch
+      3.4a fixes. Resolution: while the thumb is held (detected via
+      `GuiElementScrollbar.mouseDownOnScrollbarHandle`, a public field on the real vsapi
+      element) the thumb tracks the mouse live but the row content stays put; the recompose
+      that re-bakes rows at the new scroll position is deferred via a new
+      `rowListScrollPendingRecompose` flag, drained in `OnMouseUp` after
+      `base.OnMouseUp(args)` has cleared the scrollbar's own drag state. So the content
+      snaps to the final position on release rather than tracking continuously mid-drag --
+      an accepted consequence of cull-don't-clip + compose-at-scrolled-Y. Mouse-wheel and
+      track-clicks (`mouseDownOnScrollbarHandle` false) recompose immediately via the normal
+      next-frame `RequestRecompose` path. Clean Debug+Release build, 35/35 Core.Tests. Live
+      re-verify (smooth thumb-drag, no dying after one step) is 3.5's job.
 - [ ] 3.5 Manually test: create a document with enough rows to overflow the visible
       dialog height; confirm every row is reachable by scrolling, in both read and editor
       view — rows visually move on scroll (not just cull in/out in place), editor-view row

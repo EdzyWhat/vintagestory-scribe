@@ -224,12 +224,22 @@ the freshly composed scrollbar/slider is a BRAND-NEW element that never received
 mouse-down, so the drag is orphaned after one step. One-shot inputs (wheel, track-click)
 survive because they don't rely on a held gesture spanning frames.
 
-**Fix pattern:** defer the recompose out of the drag. Update the cheap live state
-(`scrollValue`, `contentBounds.fixedY`, `CalcWorldBounds()`) during the drag, but set a
-"pending recompose" flag and actually rebuild in `OnMouseUp` instead of inside the change
-callback. This dialog already does exactly this for its text-size slider
-(`textSizePendingRecompose`, drained in `OnMouseUp`) — mirror it for the scrollbar. See
-`GuiDialogScribeLectern.OnTextSizeSliderChanged`/`OnMouseUp`.
+**Fix pattern:** defer the recompose out of the drag. Set a "pending recompose" flag and
+actually rebuild in `OnMouseUp` instead of inside the change callback. This dialog already
+does exactly this for its text-size slider (`textSizePendingRecompose`, drained in
+`OnMouseUp`) — mirror it for the scrollbar (`rowListScrollPendingRecompose`). Detect an
+in-progress thumb-drag via the scrollbar's own public `mouseDownOnScrollbarHandle` field, so
+one-shot inputs (wheel, track-click) still recompose immediately while only held drags defer.
+See `GuiDialogScribeLectern.OnRowListScroll`/`OnMouseUp`.
+
+**Interaction with the compose-at-scrolled-Y fix (entry above):** once rows are composed at a
+viewport-relative Y and the parent `fixedY` shift is gone, there is no cheap live state to
+nudge during the drag — the only thing that moves rows is a recompose, which is exactly what's
+being deferred. So the thumb tracks the mouse live (the scrollbar element draws its own handle
+every frame) but the row content stays put and snaps to the final position on mouse-up. That
+snap-on-release is an accepted consequence of cull-don't-clip + compose-at-scrolled-Y, not a
+separate bug. Do NOT try to restore a live-`fixedY`-nudge to make the content track
+continuously — it would reintroduce the static-chrome-frozen glitch the entry above fixes.
 
 ---
 

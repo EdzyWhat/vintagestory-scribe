@@ -146,9 +146,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private int TextSizePercent => (int)System.Math.Round(clientConfig.TextSizeScale * 100);
 
     /// <summary>The row list's content bounds (the single element every row is parented under)
-    /// for whichever view is currently composed -- <see cref="OnRowListScroll"/> shifts this on
-    /// scroll. Re-set at the top of each ComposeXxxView call; only one view is ever live at a
-    /// time so one field suffices.</summary>
+    /// for whichever view is currently composed. Re-set at the top of each ComposeXxxView call;
+    /// only one view is ever live at a time so one field suffices. No longer scroll-shifted --
+    /// rows are composed at a viewport-relative Y (design.md Decision 4, third correction), so
+    /// this is now only a non-null "a row list has been composed" guard for
+    /// <see cref="OnRowListScroll"/>.</summary>
     private ElementBounds? rowListContentBounds;
 
     /// <summary>The row list's current scroll offset, in the same units <c>AddVerticalScrollbar</c>
@@ -226,24 +228,56 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     private void RequestRecompose()
     {
-        pendingRecomposeAction = IsEditorMode
-            ? RecomposeEditorViewPreservingFocus
-            : ComposeReadView;
+        pendingRecomposeAction = RecomposeCurrentView;
     }
+
+    /// <summary>Recomposes whichever view is currently live, preserving typing focus in the
+    /// editor view. The single place that knows how to rebuild "the current view" -- shared by
+    /// <see cref="RequestRecompose"/>'s deferred path and <see cref="OnMouseUp"/>'s
+    /// scroll-drag-release path.</summary>
+    private void RecomposeCurrentView()
+    {
+        if (IsEditorMode) RecomposeEditorViewPreservingFocus();
+        else ComposeReadView();
+    }
+
+    /// <summary>Set while a scrollbar thumb-drag (or track-click) is holding the handle and has
+    /// scrolled past the composed window -- the recompose that would re-bake rows at the new
+    /// scroll position is deferred to <see cref="OnMouseUp"/> instead of firing mid-drag. See
+    /// <see cref="OnRowListScroll"/> for why, and <see cref="textSizePendingRecompose"/> for the
+    /// same pattern applied to the text-size slider.</summary>
+    private bool rowListScrollPendingRecompose;
 
     private void OnRowListScroll(float value)
     {
         if (rowListContentBounds is null || isComposingRowList) return;
 
         rowListScrollValue = value;
-        rowListContentBounds.fixedY = 0 - value;
-        rowListContentBounds.CalcWorldBounds();
 
+        // Rows are baked at a viewport-relative Y (see ComposeReadView/ComposeEditorView pass 2),
+        // so visual movement on scroll now comes only from recomposing at the new scroll value --
+        // there is no parent fixedY shift to nudge live anymore (design.md Decision 4, third
+        // correction). With RowListCullBuffer == 0 the composed range is exactly the visible
+        // window, so any scroll movement escapes it and needs a recompose.
         double viewportTop = value;
         double viewportBottom = value + clientConfig.VisibleListHeight;
         if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
         {
-            RequestRecompose();
+            // A thumb-drag is a sustained gesture: recomposing now rebuilds SingleComposer and
+            // replaces the scrollbar element the drag is bound to, orphaning it after one step
+            // (design.md Decision 4, fourth correction; VSAPI-NOTES.md thumb-drag entry). Defer
+            // the recompose to OnMouseUp while the handle is held. Mouse-wheel scrolls aren't a
+            // held gesture (mouseDownOnScrollbarHandle is false), so they recompose normally via
+            // the usual next-frame deferral.
+            var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
+            if (scrollbar is { mouseDownOnScrollbarHandle: true })
+            {
+                rowListScrollPendingRecompose = true;
+            }
+            else
+            {
+                RequestRecompose();
+            }
         }
     }
 
@@ -291,6 +325,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         hoverTargetIndex = null;
         rowListScrollValue = 0;
         pendingRecomposeAction = null;
+        rowListScrollPendingRecompose = false;
 
         if (editorMode)
         {
@@ -435,10 +470,20 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             string text = block.IsTask
                 ? (block.Done ? "[x] " : "[ ] ") + block.Text
                 : block.Text;
-            var rowBounds = ElementBounds.Fixed(0, rowTop, listWidth, rowHeights[i]);
+
+            // Position each row at a VIEWPORT-RELATIVE Y (rowTop - scroll), not its absolute
+            // content Y, so BOTH render passes bake at the already-scrolled coordinate (design.md
+            // Decision 4, third correction; VSAPI-NOTES.md's "static vs interactive render pass"
+            // entry). Shifting the content parent's fixedY instead only moves the interactive
+            // pass (renderY); the static pass (drawY, a once-baked texture) has no scroll term, so
+            // an all-static read-view row wouldn't move at all -- it would just cull in/out in
+            // place. Culling above already guarantees rowTop >= scroll (full containment), so this
+            // is always >= 0.
+            double rowDrawTop = rowTop - rowListScrollValue;
+            var rowBounds = ElementBounds.Fixed(0, rowDrawTop, listWidth, rowHeights[i]);
 
             SingleComposer.AddStaticText(text, RowFont(), rowBounds);
-            if (i < blocks.Count - 1) AddRowDivider(rowBottom, listWidth);
+            if (i < blocks.Count - 1) AddRowDivider(rowDrawTop + rowHeights[i], listWidth);
         }
 
         if (blocks.Count == 0)
@@ -466,14 +511,15 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // change-notify plumbing (GuiElementScrollbar.SetNewTotalHeight -> TriggerChanged),
         // regardless of the real scroll position -- isComposingRowList suppresses that spurious
         // call so it can't snap the list back to the top or trigger a re-entrant recompose. The
-        // real scroll position is reapplied right after via CurrentYPosition's public setter
-        // (no callback re-entrancy) and contentBounds' own fixedY.
+        // real scroll position is reapplied right after via CurrentYPosition's public setter (no
+        // callback re-entrancy) so the thumb sits at the right spot. The content parent is NOT
+        // shifted (fixedY stays 0): rows are composed at a viewport-relative Y in pass 2 above,
+        // so a parent shift on top of that would double-offset them (design.md Decision 4, third
+        // correction).
         isComposingRowList = true;
         var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
         scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
-        contentBounds.fixedY = 0 - rowListScrollValue;
-        contentBounds.CalcWorldBounds();
         isComposingRowList = false;
     }
 
@@ -578,7 +624,14 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             double rowBottom = rowTop + rowHeights[i];
             if (rowTop < windowTop || rowBottom > windowBottom) continue;
 
-            var rowBounds = ElementBounds.Fixed(0, rowTop, listWidth, rowHeights[i]);
+            // Viewport-relative Y (rowTop - scroll), same as ComposeReadView pass 2 -- both
+            // render passes must bake at the scrolled coordinate. A mixed static+interactive row
+            // (text-box border is static, its text content interactive; the checkbox outline is
+            // static, its check interactive) would otherwise scroll only its interactive halves
+            // and leave the chrome frozen (design.md Decision 4, third correction). Culling
+            // guarantees rowTop >= scroll, so this is always >= 0.
+            double rowDrawTop = rowTop - rowListScrollValue;
+            var rowBounds = ElementBounds.Fixed(0, rowDrawTop, listWidth, rowHeights[i]);
 
             ScribeBlockRowCell.Compose(
                 SingleComposer,
@@ -595,7 +648,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                 OnRowDragMouseUp,
                 onTogglePin: OnRowTogglePin);
 
-            if (i < blocks.Count - 1) AddRowDivider(rowBottom, listWidth);
+            if (i < blocks.Count - 1) AddRowDivider(rowDrawTop + rowHeights[i], listWidth);
 
             if (rowListComposedFirstIndex == -1) rowListComposedFirstIndex = i;
             rowListComposedLastIndex = i;
@@ -644,14 +697,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         SingleComposer.EndChildElements().Compose();
 
         // See the matching comment in ComposeReadView for why isComposingRowList/
-        // CurrentYPosition/contentBounds.fixedY are set this way rather than a plain SetHeights
-        // call.
+        // CurrentYPosition are set this way rather than a plain SetHeights call, and why the
+        // content parent's fixedY is left at 0 (rows are composed at a viewport-relative Y).
         isComposingRowList = true;
         var scrollbar = SingleComposer.GetScrollbar("rowListScrollbar");
         scrollbar.SetHeights((float)clientConfig.VisibleListHeight, (float)System.Math.Max(clientConfig.VisibleListHeight, contentY));
         scrollbar.CurrentYPosition = (float)rowListScrollValue;
-        contentBounds.fixedY = 0 - rowListScrollValue;
-        contentBounds.CalcWorldBounds();
         isComposingRowList = false;
 
         // Seed row values (toggle state, text) only after Compose() has calculated real bounds --
@@ -842,6 +893,20 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             textSizePendingRecompose = false;
             capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName);
             ComposeEditorView();
+            return;
+        }
+
+        // A thumb-drag that scrolled past the composed window deferred its recompose to here
+        // (see OnRowListScroll) so rebuilding SingleComposer mid-drag couldn't orphan the
+        // gesture. base.OnMouseUp above has already cleared the scrollbar's own
+        // mouseDownOnScrollbarHandle, so it's safe to recompose now -- this bakes the rows at the
+        // final scroll position (during the drag itself the thumb tracked the mouse live while
+        // the row content stayed put, since visual movement now comes only from recompose, not a
+        // parent shift; see design.md Decision 4, third+fourth corrections).
+        if (rowListScrollPendingRecompose)
+        {
+            rowListScrollPendingRecompose = false;
+            RecomposeCurrentView();
             return;
         }
 
