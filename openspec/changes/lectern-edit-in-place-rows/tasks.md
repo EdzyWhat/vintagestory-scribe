@@ -109,10 +109,23 @@
       rather than being scrolled into view. Fix: after Add Task, scroll the list so the newly
       focused row is visible (and within the clip region). Ties into 6.10 (the out-of-bounds input
       is only visible at all because of the clip bleed).
-- [ ] 6.12 **DECISION/FEATURE — insert new task below the one being edited?** Tester asks: when a
-      row's input is focused and you click Add Task, insert the new task directly *below the row
-      being edited* rather than at the list bottom. Open question flagged by the tester: is that
-      discoverable, or confusing? Needs a product decision before speccing (surfaced to the user).
+- [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
+      2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
+      across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is
+      consistent: **Enter/a keyboard gesture with the cursor in a row inserts the new item directly
+      below the current one**, while the **"+" / Add button appends at the bottom**. Overloading the
+      Add Task *button* with focus-dependent placement (bottom when unfocused, below-current when
+      focused) is the genuinely confusing option — same button, two outcomes from invisible state —
+      so we DON'T do that. Instead:
+      - **Ctrl+Enter (row focused):** commit the current row, insert a new empty task *directly
+        below it*, and move focus into the new task. (Plain Enter keeps its S2 behavior:
+        commit + advance to the next existing row.)
+      - **Add Task button:** unchanged — always appends a new task at the bottom.
+      - Both paths must scroll the newly focused row into view (depends on 6.11).
+      Sequence AFTER 6.10/6.11 — insert-below-then-scroll-into-view can't be validated until the
+      clip + add-task-scroll behavior is correct. Matches the ROADMAP "UX lessons" note that already
+      earmarked Ctrl+Enter commit-and-add-below as a follow-up batch. When picked up, this becomes
+      its own small `openspec-propose` (behavior-adding beyond S2's scope).
 
 ## 7. Close out
 
