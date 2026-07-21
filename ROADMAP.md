@@ -189,12 +189,21 @@ specs (each documents its assumed default) but they shape sequencing and scope.
 3. **v5 HUD pin scope** — when the source document is on an item you're NOT holding, do pinned
    tasks still show (needs a server-pushed "my pins" summary) or only the currently-held
    document's pins?
-4. **Notebook document store** — one shared `"scribe:doc:"` store across notebook + desk +
-   tablet, or separate stores? And duplicate the lectern's packets for the docId-keyed path
-   (leaves v1 untouched) vs. generalize them (DRYer, changes v1's wire format)?
-5. **Public board concurrency & signatures** (v6) — keep a lectern-style single-editor lock or
-   go lock-free last-write-wins; and are signatures always-on, per-entry toggle, or a
-   board-level policy set at placement?
+4. **Notebook document store** — **DECIDED 2026-07-21: one shared store, generalize the packets.**
+   A single artifact-agnostic `"scribe:doc:<docId>"` store in SaveGame holds notebook + desk +
+   tablet + backpack docs, distinguished only by docId (proves the store is artifact-agnostic — a
+   v3 goal, and makes the drop-on-death "current document" lookup trivial). The v1 lectern's
+   BlockPos-keyed edit/toggle/move packets are **generalized** to carry an abstract document
+   handle (BlockPos OR docId) so lectern and held items share one wire path — accepting the
+   rewrite of v1's confirmed wire format now, while it's early dev with no shipped saves. Gates
+   v2/v3/v5 and the buildable chronicle features (see `docs/specs/README.md` convention #6).
+5. **Public board concurrency & signatures** (v6) — **DECIDED 2026-07-21: lock-free last-write-wins
+   + always-attributed.** The editable public bulletin board takes NO editor lock (anyone edits;
+   whole-document last-write-wins on save), and every public-board entry is **always signed** with
+   the writer's name (no anonymous posting on public boards). These cohere: always-on attribution
+   makes lock-free clobbers traceable to a named author, and it also settles the "who may delete an
+   entry" question (author-match is always available). The append-only guestbook never contends
+   regardless. Supersedes v6's own recommended defaults (single-lock + board-level policy).
 
 ### Done / superseded (kept only as history)
 

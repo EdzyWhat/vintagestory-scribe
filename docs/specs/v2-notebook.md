@@ -356,13 +356,18 @@ than re-deriving it here; it's gated on a font-license clearance called out ther
 
 ## Open questions
 
-1. **One store or two?** Should the notebook's `SaveGame` document store and any future
-   consolidation (v4 writing desk) share one keyed store, or does the desk get its own? This
-   spec assumes one shared `"scribe:doc:"` namespace; the desk "consolidates all your notes" and
-   would presumably index into the same store by `docId` rather than duplicating documents.
-2. **Duplicate/generalize the packets, or add `DocId` to the existing ones?** This spec
-   duplicates (new notebook packets) to keep v1 untouched; a generalized packet carrying an
-   optional target discriminator (position *or* docId) is DRYer but changes v1 wire format.
+1. **One store or two?** — **DECIDED 2026-07-21: one shared store.** A single artifact-agnostic
+   `"scribe:doc:<docId>"` namespace in `SaveGame` holds notebook + desk + tablet + backpack docs,
+   indexed by `docId` (not duplicated per artifact). The desk "consolidates all your notes" by
+   indexing into the same store. Proves the store is artifact-agnostic (a v3 goal) and makes the
+   drop-on-death "current document" lookup trivial. (ROADMAP Open decision #4.)
+2. **Duplicate/generalize the packets, or add `DocId` to the existing ones?** — **DECIDED
+   2026-07-21: generalize.** The v1 lectern edit/toggle/move packets are refactored to carry an
+   abstract document handle (BlockPos *or* docId) so lectern and held items share one wire path.
+   This rewrites v1's confirmed wire format, accepted now while it's early dev with no shipped
+   saves — DRYer than maintaining two parallel packet families forever. **Re-scope this spec's
+   implementation section (which currently assumes duplicated notebook packets) to the generalized
+   path when v2 is proposed.** (ROADMAP Open decision #4.)
 3. **Orphaned documents.** When a notebook item is destroyed (burned, despawned, void), its
    `SaveGame` store entry is orphaned (the item can't tell the store it's gone). Options: (a)
    accept the leak — text is tiny vs the ~1 GB budget; (b) a periodic GC pass reconciling live

@@ -388,15 +388,20 @@ with the user (Open Question) only whether to formally close the Envelopes-inter
 1. **Chalkboard scope.** Is the drawable chalkboard in v6, or a v6.1 sub-change? This spec
    recommends v6.1 (from-scratch custom `GuiElement` + separate stroke model/codec +
    different sync shape). Confirm.
-2. **Signatures: opt-in per entry, or board-wide policy?** Options: (a) always attributed on
-   public boards; (b) a per-entry "sign / post anonymously" toggle at write time; (c) a
-   board-level policy set at placement. This spec models it as *capable of either* (nullable
-   author fields), but the default behavior needs a decision. Guestbooks are presumably
-   always signed (that is their point).
-3. **Public board concurrency.** Does the text bulletin board keep a lectern-style
-   single-editor lock (safer against clobbering, but "public" feels like it should allow
-   simultaneous posting), or go lock-free and accept last-write-wins on the whole document?
-   The append-only guestbook avoids this; the editable task board does not.
+2. **Signatures: opt-in per entry, or board-wide policy?** — **DECIDED 2026-07-21: option (a),
+   always attributed on public boards.** Every public-board entry is signed with the writer's
+   name; no anonymous posting on public boards. The nullable author fields stay (a *private*
+   lectern/desk still leaves them null), but a public board always populates them server-side.
+   This also settles question 6 (deletion): author-match is always available, so "author or
+   land-claim-owner may delete" is enforceable. Guestbooks remain always-signed (their point).
+   (ROADMAP Open decision #5.)
+3. **Public board concurrency.** — **DECIDED 2026-07-21: lock-free, last-write-wins.** The
+   editable text bulletin board takes NO editor lock — anyone opens the editor, whole-document
+   last-write-wins on save. Chosen for the "public feels like simultaneous posting" reason;
+   made safe-enough by the always-attributed decision above (every clobber is traceable to a
+   named author). If in-flight clobbering proves painful at playtest, revisit toward per-block
+   merge rather than reintroducing a lock. The append-only guestbook never contends. (ROADMAP
+   Open decision #5.)
 4. **Guestbook entry order & timestamp display.** Newest-first or chronological? Store
    `TotalDays` (recommended, game-agnostic) and format "Day X, Year Y" in the Mod layer, or
    store `PrettyDate()` output directly? (Recommended: store numbers, format Mod-side.)
