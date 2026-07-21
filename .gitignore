@@ -14,6 +14,8 @@ obj/
 
 # Claude Code local worktrees / scratch state -- machine-local, never committed
 .claude/worktrees/
+# Personal, machine-local permissions/settings (absolute local paths) -- not committed
+.claude/settings.local.json
 
 # Vintage Story runtime data (never commit game data or the game itself)
 VintagestoryData/
