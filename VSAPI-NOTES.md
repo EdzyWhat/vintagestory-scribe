@@ -492,6 +492,18 @@ only *confirmed* way to raise a held/dropped item's temperature is a firepit/kil
 mechanic). Consequence: a "player on fire ruins your wax tablet" mechanic has no vanilla
 precedent — the wax tablet is instead balanced by material cost + no path to a fired archive.
 
+**Channeled "hold to complete" held-item gesture (for the wax-tablet wipe, or any Scribe
+hold-to-act interaction).** Vanilla ships a first-class channeled-use pattern (confirmed against
+`CollectibleObject`, the same mechanism `tryEatBegin` uses to channel eating):
+`OnHeldInteractStart(...)` sets `handling = EnumHandHandling.PreventDefault` and begins the
+gesture; `OnHeldInteractStep(float secondsUsed, ...)` is **called every 20ms** while the button is
+held and **returns `false` to end** the channel (true to keep going); `OnHeldInteractStop(float
+secondsUsed, ...)` fires on release. Releasing early simply ends the channel — a natural "cancel"
+with no confirm dialog needed. Third-person animation via the `HeldTpUseAnimation` field (default
+`"interactstatic"`) / `GetHeldTpUseAnimation`; first-person via
+`byEntity.AnimManager?.StartAnimation(name)`. (The specific animation clip for a Scribe gesture is
+a placeholder until art exists — verify the clip name.)
+
 ## Always-on HUD overlays and hotkeys
 
 **Question: how do you draw an always-on, per-tick-updated HUD overlay, and register a

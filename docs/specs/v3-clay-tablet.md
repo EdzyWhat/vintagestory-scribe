@@ -94,11 +94,12 @@ of clay's:
   read-only archive. So you spend more to get a reusable, waterproof scratch surface, but if you
   want a document to *last forever* you still need clay-and-fire. Clay stays relevant.
 - It is **erasable/reusable in place**: historically you smooth the wax flat with the blunt end
-  of the stylus to reuse the tablet. Modeled as a cheap **"smooth / erase"** editor action that
-  clears the document under the *same* docId — the opposite of clay's one-way carry-forward
-  *migration* (which mints a new document and archives/clears the old). Wax needs no migration
-  because you just wipe it and rewrite; this reusability is *why* the higher up-front cost is
-  fair.
+  of the stylus to reuse the tablet. Modeled as a **stylus-driven "wipe clean" interaction** —
+  hold the stylus (the same offhand writing tool) and use the tablet to play a **channeled wiping
+  animation**, at the end of which the whole document is cleared under the *same* docId (see
+  Implementation §8). This is the opposite of clay's one-way carry-forward *migration* (which
+  mints a new document and archives/clears the old): wax needs no migration because you just wipe
+  it flat and rewrite, and that reusability is *why* the higher up-front cost is fair.
 - Everything shared with clay — **stylus-in-offhand editing gate**, **line cap via
   `ScribeDocumentPolicy`**, **Vertical-Rack storability**, **docId-on-item persistence** — is
   identical and specced once below.
@@ -128,7 +129,7 @@ recipes/attributes — it adds **no** new C# fragility mechanic.
 | Water contact          | **Wets out** (held smudge / dropped destroy) | Immune       | **Immune** (the required contrast) |
 | Heat / fire            | Fireable → archive        | (already fired)          | No effect — **no melt mechanic** |
 | Editable?              | Yes (stylus-gated)        | **No — read-only archive** | Yes (stylus-gated)           |
-| Reuse / reset          | Carry-forward → *new* tablet, old cleared | n/a (permanent) | **Smooth flat → erase in place**, same tablet |
+| Reuse / reset          | Carry-forward → *new* tablet, old cleared | n/a (permanent) | **Stylus-animated wipe**, clears same tablet |
 | Permanence             | Temporary until fired     | **Permanent, indestructible-ish** | Always ephemeral (never permanent) |
 | Line cap               | 3 (`ScribeDocumentPolicy.ClayTabletSoft`) | 3 (`…Fired`) | 4? (`…WaxTablet`, open question) |
 
@@ -226,6 +227,28 @@ vanilla assets confirm about the wax supply chain and how wax is "used up" into 
 - Without a stylus in the offhand, the tablet should open **read-only** (mirrors `ItemBook`
   falling through to the read dialog when no writing tool is present). This gives the tablet a
   natural read/edit split driven by the offhand tool rather than a Shift modifier.
+
+### Channeled use-animation (the WAX "wipe clean" gesture)
+
+- **Vanilla ships a first-class channeled-use pattern the wipe reuses** (confirmed:
+  `CollectibleObject` decompile). `OnHeldInteractStart` sets `handling =
+  EnumHandHandling.PreventDefault` and kicks off the gesture; `OnHeldInteractStep(float
+  secondsUsed, …)` is then called **every 20ms** while the use button is held (confirmed: line
+  ~1411 "Called every 20ms", `OnHeldInteractStep` line ~1604) and **returns `false` to end** the
+  interaction; `OnHeldInteractStop(float secondsUsed, …)` fires on release/completion (line
+  ~1648). This is exactly how eating is implemented (`tryEatBegin` → animation + `PreventDefault`,
+  confirmed line ~1708).
+- **The third-person use animation is a collectible field**, `HeldTpUseAnimation` (default
+  `"interactstatic"`, confirmed line 209) exposed via `GetHeldTpUseAnimation` (line ~932); the
+  first-person/entity animation is driven by `byEntity.AnimManager?.StartAnimation("<anim>")`
+  (confirmed: `tryEatBegin` calls `StartAnimation("eat")`, line ~1718). So the wipe can either set
+  `HeldTpUseAnimation` to a wiping clip or call `StartAnimation` directly. **Which concrete clip
+  plays is art we don't have yet — mark VERIFY;** the *mechanism* (channel a use gesture over N
+  seconds, animate, then mutate on completion) is confirmed. A placeholder anim (reuse a generic
+  interact/smooth motion) is acceptable for a first cut, mirroring the placeholder-art precedent.
+- **Gate the wipe on the stylus in the offhand**, same `ItemBook.isWritingTool(LeftHandItemSlot)`
+  check the write path uses — the fiction is you smooth the wax flat *with the stylus*. Without
+  the stylus, use falls through to the normal read/open path (no wipe).
 
 ### Water-contact fragility (the CLAY drawback)
 
@@ -449,12 +472,21 @@ public sealed class ItemScribeTablet : Item   // registered "ScribeTablet" (was 
     public override void OnHeldInteractStart(ItemSlot slot, EntityAgent byEntity, /*...*/ ref EnumHandHandling handling)
     {
         // 1. PreventDefault.
-        // 2. Read/lazily-alloc docId (server), same as ItemScribeNotebook.
-        // 3. Decide mode:
+        // 2. WAX + stylus + "wipe" intent (e.g. sneak+use) -> begin the channeled wipe gesture
+        //    (StartAnimation + return; completes in OnHeldInteractStop). See Impl §8.
+        // 3. Otherwise read/lazily-alloc docId (server), same as ItemScribeNotebook, and open:
         //      fired clay -> always read-only view (no stylus check).
         //      soft clay / wax -> editable IFF ItemBook.isWritingTool(byEntity.LeftHandItemSlot); else read-only.
         //    Send ScribeTabletOpenMessage { DocId, HotbarSlotId, WantEditor } where
         //    WantEditor = !IsReadOnly && hasStylus.
+    }
+
+    // Wax wipe: channeled use gesture (confirmed pattern). Keep channeling until the wipe
+    // duration elapses, then clear the doc server-side. Releasing early cancels harmlessly.
+    public override bool OnHeldInteractStep(float secondsUsed, ItemSlot slot, EntityAgent byEntity, /*...*/) => secondsUsed < WipeSeconds;
+    public override void OnHeldInteractStop(float secondsUsed, ItemSlot slot, EntityAgent byEntity, /*...*/)
+    {
+        // server only, wax only: if (secondsUsed >= WipeSeconds) store.Save(docId, new ScribeDocument()); slot.MarkDirty();
     }
 
     public override void OnHeldIdle(ItemSlot slot, EntityAgent byEntity)
@@ -477,7 +509,7 @@ public sealed class ItemScribeTablet : Item   // registered "ScribeTablet" (was 
 
 Using one class keeps the docId/open/idle logic in one place; the JSON defs differ in attributes
 (clay-soft: `dissolveInWater` + `combustibleProps`; wax: neither — no fragility attributes and no
-custom fragility code; wax's editor instead shows a "smooth/erase" action). An `ItemClay`-style
+custom fragility code; wax instead offers a stylus-animated "wipe clean" gesture). An `ItemClay`-style
 `Variant[...]` read is the confirmed idiom (`ItemClay.OnHeldInteractStart` reads
 `((RegistryObject)this).Variant["type"]`).
 
@@ -507,42 +539,39 @@ handler (below) and a **fire-transform handler** if firing is done via a custom 
 
 ### 1. Assets (Mod-side JSON) — most of the tier is data, not code
 
-- `assets/scribe/itemtypes/claytablet.json` — the clay item, `class: "ScribeTablet"`,
-  `maxstacksize: 1` (a docId-bearing item must never stack — same rule as the notebook),
-  `variantgroups: [{ code: "material", states: ["clay"] }, { code: "state", states: ["soft",
-  "fired"] }]` (the `material` axis is what wax shares — see below), clay-tinted texture
-  (placeholder art acceptable, per lectern/notebook precedent). Then `attributesByType`:
+- `assets/scribe/itemtypes/tablet.json` — **one item def for both materials** (the user's
+  preference — dissolvability is a minor JSON attribute, not worth a second file), `class:
+  "ScribeTablet"`, `maxstacksize: 1` (a docId-bearing item must never stack — same rule as the
+  notebook), `variantgroups: [{ code: "material", states: ["clay", "wax"] }, { code: "state",
+  states: ["soft", "fired"] }]`, with the invalid `wax-fired` combo suppressed (see the item-def
+  note above — `allowedVariants`/`skipVariants`, since wax is never fired). Placeholder textures
+  by material acceptable, per lectern/notebook precedent. Then `attributesByType` keyed on the
+  resolved code:
   - `*-clay-soft`: `dissolveInWater: true` (free dropped-in-water destruction, confirmed vanilla
     path); `combustiblePropsByType` with `smeltingType: "fire"`, a `meltingPoint`/`duration`
     (~600/30 per tile precedent), and `smeltedStack: { type: "item", code:
-    "scribe:claytablet-clay-fired" }` **only if the vanilla firing path is chosen** (see step 5
-    for the docId caveat); `scrollrackable: true` + `onscrollrackTransform`.
+    "scribe:tablet-clay-fired" }` **only if the vanilla firing path is chosen** (see step 5 for
+    the docId caveat); `scrollrackable: true` + `onscrollrackTransform`.
   - `*-clay-fired`: `scrollrackable: true` + `onscrollrackTransform`; **no** `dissolveInWater`,
     **no** `combustibleProps`, **no** editability. Optionally a higher blast/harvest resistance if
     we want "indestructible" to be literal (open question).
+  - `*-wax`: `scrollrackable: true` + `onscrollrackTransform` **only** — crucially **NO
+    `dissolveInWater`** (this is the water-immunity, the required contrast) and **no
+    `combustibleProps`** (no firing; no heat/melt behavior at all).
   - Interaction hints in `lang/en.json` (remember the `"scribe:"` domain prefix — VSAPI-NOTES
-    "Localization"): "Hold a stylus to write", "Wets out if you swim", "Fire to make permanent".
-- `assets/scribe/itemtypes/waxtablet.json` — the wax item, **also `class: "ScribeTablet"`**,
-  `maxstacksize: 1`, `variantgroups: [{ code: "material", states: ["wax"] }]` (no `state` axis —
-  wax is never fired; the class's `IsFired` reads `Variant["state"]` only when `IsClay`, so a
-  missing axis is fine). Attributes: `scrollrackable: true` + `onscrollrackTransform` **only** —
-  crucially **NO `dissolveInWater`** (this is the water-immunity) and **no `combustibleProps`**
-  (no firing, and no heat/melt behavior — wax has none). Interaction hints: "Hold a stylus to
-  write", "Waterproof", "Smooth flat to erase & reuse". (A single shared `tablet.json` with a
-  `material: ["clay","wax"]` axis is also viable; two files is cleaner given clay carries a
-  `state` axis + combustible/dissolve attrs that wax must not have. Open question.)
-- `assets/scribe/recipes/clayforming/claytablet.json` — a **single-layer** `pattern` (copy
+    "Localization"): shared "Hold a stylus to write"; clay-soft "Wets out if you swim" + "Fire to
+    make permanent"; wax "Waterproof" + "Hold the stylus and use to wipe clean".
+- `assets/scribe/recipes/clayforming/tablet-clay.json` — a **single-layer** `pattern` (copy
   `tiles.json`'s shape), `ingredient: { type: "item", code: "clay-*", name: "color",
   allowedVariants: ["blue","fire","red"] }`, `output: { type: "item", code:
-  "scribe:claytablet-clay-soft" }`. This is the whole "clayform a flat slab" mechanic.
-- `assets/scribe/recipes/grid/waxtablet.json` — a **grid recipe** (the confirmed vanilla shape
+  "scribe:tablet-clay-soft" }`. This is the whole "clayform a flat slab" mechanic.
+- `assets/scribe/recipes/grid/tablet-wax.json` — a **grid recipe** (the confirmed vanilla shape
   for "consume beeswax into a shaped item", per `waxedcheese.json`): e.g. a wooden board/plank +
-  N `beeswax` → `scribe:waxtablet-wax`. **N is the balance lever** — set it high enough (the
-  candle recipe spends 3 beeswax; a tablet asking ~2–4 reads as a real investment vs cheap clay)
-  that wax is a deliberate choice, not a free upgrade. This grid recipe is the *entire* "make a
-  wax tablet" mechanic — no clayforming, no firing, no C#. (Open question: exact ingredient set
-  and beeswax quantity; whether the "wooden frame" is a vanilla board or a tiny crafted frame
-  item that could later be re-waxed.)
+  N `beeswax` → `scribe:tablet-wax`. **N is the balance lever** — set it high enough (the candle
+  recipe spends 3 beeswax; a tablet asking ~2–4 reads as a real investment vs cheap clay) that wax
+  is a deliberate choice, not a free upgrade. This grid recipe is the *entire* "make a wax tablet"
+  mechanic — no clayforming, no firing, no C#. (Exact ingredient set and beeswax quantity are
+  deferred to when recipes are designed — see Open Questions.)
 - **The stylus.** Either (a) reuse an existing vanilla item as the writing tool by requiring
   `writingTool: true` — but no vanilla item sets it except via our own patch, so (b) ship a
   small `assets/scribe/itemtypes/stylus.json` (a bone/wood point) with `attributes: {
@@ -595,11 +624,11 @@ bytes → client opens dialog). The **only delta** is mode selection in
 The vanilla firing paths (`BlockEntityPitKiln.OnFired` and the `beehivekiln` attribute map)
 **both replace the stack with a fresh output clone and drop the source attributes** (confirmed:
 `BlockEntityPitKiln` decompile — `slot.Itemstack = SmeltedStack.ResolvedItemstack.Clone()`). A
-naive `combustibleProps.smeltedStack` would therefore fire a **blank** `claytablet-fired` with no
+naive `combustibleProps.smeltedStack` would therefore fire a **blank** `tablet-clay-fired` with no
 `docId` → the document is silently orphaned and the archive is empty. Two viable approaches:
 
 - **Approach A — same item, `fired` flag on the stack, no stack replacement (preferred if
-  feasible).** Instead of a distinct fired *item*, keep the *same* `claytablet` item and store
+  feasible).** Instead of a distinct fired *variant*, keep the *same* `tablet-clay` item and store
   `fired` as a **boolean on `ItemStack.Attributes`** (e.g. `scribeFired = true`). Then firing must
   set that attribute rather than swap the stack. But the vanilla kiln always swaps the stack, so
   this needs a hook: override **`CollectibleObject.OnCreatedByCrafting`** /
@@ -607,7 +636,7 @@ naive `combustibleProps.smeltedStack` would therefore fire a **blank** `claytabl
   data-wise (docId never leaves the stack) but fights the vanilla combustible flow. Needs a
   spike (open question).
 - **Approach B — vanilla combustible path + a fire-transform fixup that copies attributes
-  (pragmatic).** Let the vanilla kiln swap `claytablet-soft` → `claytablet-fired` via
+  (pragmatic).** Let the vanilla kiln swap `tablet-clay-soft` → `tablet-clay-fired` via
   `combustibleProps.smeltedStack`, then **copy the `docId` from the consumed stack onto the fired
   stack.** The seam: the pit kiln clones the recipe output and discards the source; to intervene
   we either (i) patch/wrap the transform, or (ii) accept that the vanilla path can't carry
@@ -658,7 +687,7 @@ serialized document.)
   the whole `ItemStack`). Interacting with a tablet *while it sits in the rack* is out of scope —
   take it out to read/write (matches vanilla scroll/paper behavior).
 
-### 8. Carry-forward migration (CLAY) and in-place erase (WAX)
+### 8. Carry-forward migration (CLAY) and stylus-animated wipe (WAX)
 Two distinct "start fresh" affordances, matching each material's fiction:
 
 **Clay — carry-forward migration (mint a new tablet).** Because clay is one-way (you can't
@@ -674,15 +703,30 @@ doc has ≥1 undone task and a blank destination tablet is available — ergonom
   collides with the stylus requirement, so more likely a two-step flow. Ergonomics are an open
   question; the Core op is the load-bearing, testable part and is unambiguous.
 
-**Wax — smooth/erase in place (reuse the SAME tablet).** Wax is erasable by design, so it needs
-no migration and no second tablet. The editor offers a "Smooth flat (erase)" action (shown for a
-wax tablet with ≥1 block). On invoke the server simply saves an **empty** `ScribeDocument` under
-the **same** `docId` (`store.Save(docId, new ScribeDocument())`) and `MarkDirty`s the slot. No
-Core helper beyond constructing the empty doc; no new docId. This is *why* the wax tablet is worth
-its higher material cost — it is infinitely reusable, whereas clay's carry-forward always consumes
-a fresh tablet. (Open question: confirm-dialog before erasing so a stray click doesn't wipe the
-wax; and whether wax should *also* offer carry-forward for parity — probably not needed, since
-erase + rewrite covers it.)
+**Wax — stylus-animated "wipe clean" in place (reuse the SAME tablet).** Wax is erasable by
+design, so it needs no migration and no second tablet — and per the user's direction the wipe is a
+**held-item gesture that uses the stylus to animate rubbing the text off**, not a plain editor
+button. Flow (built on the confirmed channeled-use pattern — see "Channeled use-animation" in VS
+API hooks):
+  1. **Start** — in `OnHeldInteractStart`, if the tablet is **wax** *and* the offhand holds a
+     stylus (`ItemBook.isWritingTool(byEntity.LeftHandItemSlot)`) *and* the interaction is the
+     "wipe" intent (e.g. sneak+use, to distinguish from the plain open-to-write/read use — open
+     question on the exact input), begin the channeled gesture: `StartAnimation` a wiping clip
+     (or set `HeldTpUseAnimation`), set `handling = EnumHandHandling.PreventDefault`, and return.
+  2. **Step** — `OnHeldInteractStep(secondsUsed, …)` returns `true` to keep channeling until
+     `secondsUsed` reaches the wipe duration (~1–1.5s so the animation reads), then `false`. This
+     is the same "hold to complete" cadence eating/knapping use, so a stray click can't wipe the
+     tablet — you must hold the gesture through (this replaces the confirm-dialog idea).
+  3. **Complete** — on `OnHeldInteractStop` at/after full duration, **server-side**, save an
+     **empty** `ScribeDocument` under the **same** `docId` (`store.Save(docId, new
+     ScribeDocument())`) and `MarkDirty` the slot. Releasing early (before full duration) cancels
+     with no data loss.
+No Core helper beyond constructing the empty doc; no new docId. This is *why* the wax tablet is
+worth its higher material cost — it is infinitely reusable, whereas clay's carry-forward always
+consumes a fresh tablet. (Open question: the exact input that means "wipe" vs "open" —
+sneak+use, a small in-editor "wipe" button that then plays the held animation, or a dedicated
+key; and whether wax should *also* offer carry-forward for parity — probably not needed, since
+wipe + rewrite covers it. The concrete wiping animation clip is VERIFY / placeholder-art.)
 
 ## Dependencies & sequencing
 
@@ -706,12 +750,13 @@ exist by the time v2 ships.
 5. Mod: **clay** firing → fired transform that **carries the docId** (spike Approach A vs B first
    — this is the riskiest piece; do a throwaway test that fires a written soft tablet and asserts
    the fired stack resolves to the same document before committing to a path). Wax has no firing.
-6. Mod: clay carry-forward migration action + wax smooth/erase action in the editor.
+6. Mod: clay carry-forward migration action; wax stylus-animated "wipe clean" channeled gesture
+   (OnHeldInteractStart/Step/Stop) that clears the doc on completion.
 7. Playtest: clayform a clay tablet and grid-craft a wax tablet; write with/without stylus on
    both; hit each line cap; **swim with the wax tablet and confirm it is UNHARMED** (the required
    contrast) while the clay tablet wets out; drop clay in water (destroyed) vs wax in water
    (fine); fire the clay and confirm read-only + keeps text + survives water; erase/reuse the wax
-   in place; rack all three; carry-forward the clay.
+   in place via the stylus-animated wipe; rack all three; carry-forward the clay.
 
 **Position in the staged plan:** v3 is the **scratch tier** — narratively the *earliest* family
 but architecturally *after* v2, because it depends on the notebook's `docId` infrastructure. It
@@ -752,24 +797,29 @@ never permanent) rather than by stacking punishments. Its `ScribeDocumentPolicy`
    does the old cleared tablet go?) needs a UX decision, ideally at playtest.
 7. **One item + `fired` attribute, or two variants/items?** This spec uses a `material` axis
    (clay/wax) plus a clay-only `state: [soft, fired]` axis, all backed by one `ItemScribeTablet`
-   class (two JSON defs: `claytablet.json`, `waxtablet.json`). If firing ends up modeled as a
+   class (one JSON def, `tablet.json`, with `attributesByType`). If firing ends up modeled as a
    stack-attribute flag (Approach A), the clay `state` axis could collapse to a `scribeFired`
    attribute. Resolve alongside question 4. (Renames the planned `ItemScribeClayTablet` →
    `ItemScribeTablet` — pure naming, no code exists yet.)
 
 ### Wax-specific open questions (2026-07-21 addendum)
 
-8. **Wax line cap — same as clay's 3, or more?** Wax is erasable/reusable, so a slightly larger
-   cap (this spec proposes **4**) rewards the higher cost without unbalancing the tier; equal-to-
-   clay (3) keeps the two artifacts symmetric and the code trivial. Decide the number.
-9. **Wax crafting recipe — how expensive, and what's the "frame"?** The balance lives here. How
-   much beeswax (candle spends 3; ~2–4 feels right) and what wooden component — a vanilla
-   board/plank, or a small crafted "tablet frame" item (which could enable a re-wax reuse loop on
-   an emptied frame)? Pick the ingredient list and quantity.
-10. **Wax erase interaction.** Confirm the smooth/erase action lives in the editor with a confirm
-    step (vs. a right-click gesture on the held tablet). And confirm wax does **not** also need
-    clay's carry-forward (erase + rewrite should cover it).
-11. **Two item defs or one shared def?** `claytablet.json` + `waxtablet.json` (this spec's lean,
-    since clay carries `state`/`dissolveInWater`/`combustibleProps` that wax must not) vs. a
-    single `tablet.json` with a `material: [clay, wax]` axis and `attributesByType`. Cosmetic;
-    confirm the preferred file layout.
+8. **Wax line cap — same as clay's 3, or more?** *Deferred to playtest (user, 2026-07-21).* Wax
+   is erasable/reusable so a slightly larger cap could reward the higher cost, but the number will
+   be tuned in-game rather than decided up front (`ScribeDocumentPolicy.WaxTablet.MaxBlocks` is a
+   one-line change).
+9. **Wax crafting recipe — how expensive, and what's the "frame"?** *Deferred to recipe-design
+   time (user, 2026-07-21).* The balance lever is beeswax quantity (candle spends 3; ~2–4 feels
+   right) + a wooden component (vanilla board/plank vs. a small crafted "tablet frame" that could
+   enable a re-wax loop). Settled when recipes are authored.
+10. **Wax wipe input — how does the player trigger the animated wipe?** *Mechanism decided (user,
+    2026-07-21): a stylus-driven channeled gesture that animates rubbing the text off, no confirm
+    dialog (holding through the gesture is the confirmation).* Still open: the exact *input* that
+    means "wipe" vs "open" — sneak+use, an in-editor "wipe" button that then plays the held
+    animation, or a dedicated key — and the concrete wiping animation clip (VERIFY / placeholder).
+    Wax does **not** also need clay's carry-forward (wipe + rewrite covers it).
+11. **One item def — confirmed (user, 2026-07-21).** A single `tablet.json` with `material:
+    [clay, wax]` + a clay-only `state: [soft, fired]` axis and `attributesByType` carries the
+    per-variant `dissolveInWater`/`combustibleProps`/read-only differences. Residual detail:
+    whether to suppress the invalid `wax-fired` combo via `allowedVariants`/`skipVariants` or
+    just ignore `state` for wax in code (both work).
