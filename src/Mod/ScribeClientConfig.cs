@@ -38,8 +38,11 @@ public sealed class ScribeClientConfig
     /// both views.</summary>
     public double VisibleListHeight = 400;
 
-    /// <summary>Vertical gap between rows in the scrollable list, shared by both views. A thin
-    /// divider (<see cref="RowDividerThickness"/>) is centered in this gap.</summary>
+    /// <summary>Base (unscaled) vertical gap between rows in the scrollable list, shared by both
+    /// views. Scaled by <see cref="TextSizeScale"/> at the point of use (see
+    /// <c>GuiDialogScribeLectern.ScaledRowSpacing</c>) so the gap grows/shrinks with row text
+    /// rather than staying a fixed pixel size -- like <see cref="TaskRowHeight"/>. A thin divider
+    /// (<see cref="RowDividerThickness"/>) is centered in this gap.</summary>
     public double RowSpacing = 14;
 
     /// <summary>Vertical gap between the title bar and the first row, shared by both views.</summary>
@@ -47,7 +50,10 @@ public sealed class ScribeClientConfig
 
     // ---------------- Row divider ----------------
 
-    /// <summary>Thickness, in pixels, of the embossed-inset divider line drawn below each row.</summary>
+    /// <summary>Base (unscaled) thickness, in pixels, of the embossed-inset divider line drawn
+    /// below each row. Scaled by <see cref="TextSizeScale"/> at the point of use (see
+    /// <c>GuiDialogScribeLectern.ScaledRowDividerThickness</c>) so the divider thickens/thins
+    /// with row text rather than staying a fixed pixel size.</summary>
     public double RowDividerThickness = 2;
 
     /// <summary>Brightness (0-1) of the embossed-inset divider line -- see the engine's own
@@ -62,7 +68,7 @@ public sealed class ScribeClientConfig
     /// <summary>Editor-view row-list width. Wider than the read view to leave room for the drag
     /// handle/checkbox/pin/delete icon gutters that the read view's plain static text doesn't
     /// need.</summary>
-    public double EditorListWidth = 340;
+    public double EditorListWidth = 500;
 
     // ---------------- Row cell dimensions (ScribeBlockRowCell) ----------------
 

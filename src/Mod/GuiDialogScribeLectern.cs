@@ -145,6 +145,16 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
     private int TextSizePercent => (int)System.Math.Round(clientConfig.TextSizeScale * 100);
 
+    /// <summary>Row gap scaled by the current text size, so spacing grows/shrinks with the rows
+    /// (mirrors how <c>ScribeBlockRowCell.RowHeight</c> scales row height). The config value
+    /// itself stays the unscaled base -- scaling here at the point of use, not by mutating the
+    /// stored value, avoids compounding the scale on every recompose/reopen.</summary>
+    private double ScaledRowSpacing => clientConfig.RowSpacing * clientConfig.TextSizeScale;
+
+    /// <summary>Divider thickness scaled by the current text size, same reasoning as
+    /// <see cref="ScaledRowSpacing"/>.</summary>
+    private double ScaledRowDividerThickness => clientConfig.RowDividerThickness * clientConfig.TextSizeScale;
+
     /// <summary>The row list's content bounds (the single element every row is parented under)
     /// for whichever view is currently composed. Re-set at the top of each ComposeXxxView call;
     /// only one view is ever live at a time so one field suffices. No longer scroll-shifted --
@@ -377,7 +387,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// etc.) so the divider's look can be re-tuned without a rebuild.</summary>
     private void AddRowDivider(double y, double width)
     {
-        var dividerBounds = ElementBounds.Fixed(0, y + clientConfig.RowSpacing / 2 - clientConfig.RowDividerThickness / 2, width, clientConfig.RowDividerThickness);
+        var dividerBounds = ElementBounds.Fixed(0, y + ScaledRowSpacing / 2 - ScaledRowDividerThickness / 2, width, ScaledRowDividerThickness);
         SingleComposer.AddInset(dividerBounds, depth: 1, brightness: clientConfig.RowDividerBrightness);
     }
 
@@ -386,7 +396,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private void ComposeReadView()
     {
         var blocks = lectern.Document.Blocks;
-        double rowSpacing = clientConfig.RowSpacing;
+        double rowSpacing = ScaledRowSpacing;
         double listWidth = clientConfig.ReadListWidth;
         double y = clientConfig.TopContentGap;
 
@@ -566,7 +576,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         if (scratchDocument is null) return;
 
-        double rowSpacing = clientConfig.RowSpacing;
+        double rowSpacing = ScaledRowSpacing;
         double listWidth = clientConfig.EditorListWidth;
         double y = clientConfig.TopContentGap;
 
