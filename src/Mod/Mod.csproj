@@ -32,6 +32,15 @@
       <HintPath>$(VintageStoryPath)/Lib/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- cairo-sharp: the 2D drawing library the game's own GUI system uses (the base
+         GuiElement.ComposeElements(Context, ImageSurface) signature is Cairo types). A
+         custom-drawn GUI element (ScribeRowElement, row-list-rework) inherently needs it. NOT a
+         third-party/mod dependency - a game-runtime DLL shipped in the install, referenced like
+         VintagestoryLib above (Private=false: the game provides it, we never copy it). -->
+    <Reference Include="cairo-sharp">
+      <HintPath>$(VintageStoryPath)/Lib/cairo-sharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <!-- ConfigLib: permanent, optional soft dependency (design.md decision in

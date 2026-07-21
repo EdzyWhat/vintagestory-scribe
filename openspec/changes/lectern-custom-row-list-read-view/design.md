@@ -73,9 +73,19 @@ draw and (in S2) the floating input's placement read from it — structural sing
 rather than measure-and-match, so there is no baseline jump when S2 swaps a label for the live
 input. Establishing it now, in S1, is the cheap insurance that makes S2's alignment tractable.
 
-**6. Interactive read-view checkbox reuses the existing done-toggle mutation.** Clicking the glyph
-calls the same server-authoritative toggle path the editor already uses; no new packet, no Core
-change. Everything else in a read-view row is inert (no edit, drag, or hover icons) per the spec.
+**6. Interactive read-view checkbox → new lock-free `ScribeToggleTaskMessage`.** The editor's
+only existing mutation path (`ScribeEditDocumentMessage` → `ApplyEdit`) is lock-gated: it rejects
+any sender who is not the current lock holder. The read view deliberately holds no lock, so it
+*cannot* reuse that path — a reader's toggle would be silently rejected. Instead, add a dedicated
+client→server `ScribeToggleTaskMessage` (block position + block index), registered on the existing
+channel, whose server handler applies `ScribeDocument.ToggleTask(index)` **without any lock check**
+(toggling done is an always-allowed action) and calls `MarkDirty(redrawOnClient: true)` to persist
+and re-sync — the same sync mechanism `ApplyEdit` uses. `ToggleTask` is already bounds-safe and
+task-only (returns false otherwise), so a malformed index is a no-op, not a crash; no Core change.
+Everything else in a read-view row is inert per the spec. *Alternatives considered:* (a) reader
+briefly auto-acquires the lock, toggles, releases — rejected: fails when another player is editing,
+and is a race-prone multi-step round-trip for one click; (b) defer read-mode interactivity to a
+later stage — rejected by the user, who wants ticking-off to be an always-available action.
 
 **7. Temporary sample-content seeding.** Seed a few hardcoded rows (mixed tasks + notes, at least
 one long line to stress wrapping/clipping) so the read view is testable before S2 exists. Keep it
@@ -97,6 +107,12 @@ behind an obvious, easily-removed seam (clearly commented) since it is scaffoldi
   they're absent from old files; only changing an *existing* default would require a file reset.
 - **[Sample seed leaking to release]** → Mitigation: single clearly-commented seam, removed/replaced
   when S2's real edit path lands; it never touches persisted document state.
+- **[Lock-free toggle vs. a concurrent editor's autosave]** → A reader toggles done while an editor
+  holds the lock; the editor's next full-document autosave (built from their scratch copy, which
+  predates the toggle) could overwrite the toggle. Accepted for S1: the window is small, the editor
+  sees the re-synced state and toggling is idempotent/cheap to redo, and a proper merge is out of
+  scope for a single-block v1. Noted here so it isn't mistaken for a bug; revisit if it bites in
+  playtest. The toggle is still strictly better than the status quo (no read-mode toggle at all).
 
 ## Open Questions
 

@@ -60,6 +60,45 @@ public sealed class ScribeClientConfig
     /// <c>AddInset</c> helper's <c>brightness</c> parameter.</summary>
     public float RowDividerBrightness = 0.85f;
 
+    // ---------------- Lined-paper ruling (ScribeRowElement, read view) ----------------
+    //
+    // The custom read-view row (ScribeRowElement) draws its own "lined paper" hairline as a
+    // structural part of the row (it scrolls with the row and is drawn per-row in the
+    // interactive pass), rather than the AddInset divider chrome the old static rows used. These
+    // knobs tune that hairline; they are authored so the line's *visual* could later be swapped
+    // for an image without changing the row's layout math (row-list-rework S1, design.md
+    // Decision 3). Distinct from RowDivider* above, which still drives the editor view's dividers
+    // until S2 reworks that view too.
+
+    /// <summary>Ruling color as RGBA components (0-1). A low-alpha near-ink tone reads as a faint
+    /// ruled line on the parchment backdrop. Kept as four fields (not a Vec-typed member) so the
+    /// on-disk JSON stays flat and hand-editable, matching the rest of this config.</summary>
+    public double RulingColorR = 0.15;
+    public double RulingColorG = 0.11;
+    public double RulingColorB = 0.08;
+    public double RulingColorA = 0.35;
+
+    /// <summary>Ruling line thickness in unscaled pixels; scaled by <see cref="TextSizeScale"/> at
+    /// the point of use so the hairline thickens/thins with row text rather than staying fixed.</summary>
+    public double RulingThickness = 1.5;
+
+    /// <summary>Base (unscaled) vertical padding between a row's text and its ruling line, above
+    /// and below the line. Scaled by <see cref="TextSizeScale"/> at the point of use so the gap
+    /// tracks font size (design.md Decision 3 / spec "ruling padding scales with text size").</summary>
+    public double RulingPadding = 4;
+
+    /// <summary>How much of the read-view checkbox column the drawn glyph fills (0-1). The glyph is
+    /// centered in the column (<see cref="ToggleWidth"/> wide); a value below 1 insets it. Tuned up
+    /// from the original inline 0.76 so the glyph reads a touch larger (playtest 2026-07-21).</summary>
+    public double ReadCheckboxGlyphFill = 0.86;
+
+    /// <summary>Multiplier on the read-view checkbox's CLICKABLE area versus its drawn glyph column,
+    /// to make the target easier to hit (ease-of-use goal; a "forgiving target" per Fitts's law).
+    /// 1.2 = hitbox ~20% larger than the drawn space, expanded symmetrically around the column but
+    /// clamped so it never crosses into the text so a text-aimed click won't toggle. Applied only
+    /// to hit-testing, never to drawing.</summary>
+    public double ReadCheckboxHitboxScale = 1.2;
+
     // ---------------- Row-list width ----------------
 
     /// <summary>Read-view row-list width.</summary>

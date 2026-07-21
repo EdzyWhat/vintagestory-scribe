@@ -29,7 +29,8 @@ public sealed class ScribeModSystem : ModSystem
         api.Network.RegisterChannel(NetworkChannelName)
             .RegisterMessageType<ScribeEditDocumentMessage>()
             .RegisterMessageType<ScribeReleaseLockMessage>()
-            .RegisterMessageType<ScribeRequestAccessMessage>();
+            .RegisterMessageType<ScribeRequestAccessMessage>()
+            .RegisterMessageType<ScribeToggleTaskMessage>();
     }
 
     public override void StartClientSide(ICoreClientAPI api)
@@ -50,6 +51,7 @@ public sealed class ScribeModSystem : ModSystem
         channel.SetMessageHandler<ScribeEditDocumentMessage>(OnServerReceivedEdit);
         channel.SetMessageHandler<ScribeReleaseLockMessage>(OnServerReceivedReleaseLock);
         channel.SetMessageHandler<ScribeRequestAccessMessage>(OnServerReceivedRequestAccess);
+        channel.SetMessageHandler<ScribeToggleTaskMessage>(OnServerReceivedToggleTask);
     }
 
     private void OnClientReceivedEditReply(ScribeEditDocumentMessage message)
@@ -88,6 +90,17 @@ public sealed class ScribeModSystem : ModSystem
         if (TryGetLectern(sapi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
         {
             lectern.OnRequestAccess(fromPlayer, message.WantEditor);
+        }
+    }
+
+    private void OnServerReceivedToggleTask(IServerPlayer fromPlayer, ScribeToggleTaskMessage message)
+    {
+        if (sapi is null) return;
+        if (TryGetLectern(sapi.World, message.PosX, message.PosY, message.PosZ) is { } lectern)
+        {
+            // Lock-free by design: any viewer may tick a task off, so unlike OnServerReceivedEdit
+            // there is no lock check here (see ScribeToggleTaskMessage / BlockEntity.ToggleTaskFromReader).
+            lectern.ToggleTaskFromReader(message.BlockIndex);
         }
     }
 

@@ -150,6 +150,25 @@ public sealed class BlockEntityScribeLectern : BlockEntity
         Document = doc;
     }
 
+    /// <summary>
+    /// Server-side: toggles a single task's done state on behalf of a read-view viewer. Unlike
+    /// <see cref="ApplyEdit"/> this does NOT require the editor lock — ticking a task off is an
+    /// always-allowed action any viewer may perform, even while another player holds the lock
+    /// (see <see cref="ScribeToggleTaskMessage"/>). Mutates the authoritative document in place
+    /// (not a client-submitted copy), so it only ever changes the one flag and cannot clobber a
+    /// concurrent editor's in-flight text edits beyond that. A bad or non-task index is a no-op
+    /// (<see cref="ScribeDocument.ToggleTask"/> returns false), in which case nothing is persisted.
+    /// </summary>
+    public void ToggleTaskFromReader(int index)
+    {
+        if (Api is not ICoreServerAPI) return;
+
+        if (Document.ToggleTask(index))
+        {
+            MarkDirty(redrawOnClient: true);
+        }
+    }
+
     /// <summary>Server-side: releases the lock, e.g. when the editing player closes the GUI or switches to read view.</summary>
     public void ReleaseLock(string playerUid)
     {

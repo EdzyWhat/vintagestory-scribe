@@ -41,7 +41,11 @@ age (the saw); anything past that is cosmetic.
   clayform-a-flat-slab (no firing), stylus in offhand, wets out in water, storable in
   the vanilla Vertical Rack. Plain text entry for now.
 - **v4 — Writing desk (organization):** private owner-gated block; consolidates all
-  note-items + categories.
+  note-items + categories. **Idea (2026-07-20): full kanban in the desk's notebook UI** —
+  Active / Backlog / Completed sections (columns or tabs). This is the richer home for the
+  "funnel completed tasks into a separate view" idea (see the Parked feature note below): at
+  the desk tier, "completed" becomes one column of a proper board rather than a lectern toggle.
+  Move-between-columns interaction to be designed; reuses the row-list-rework shared renderer.
 - **v5 — Backpack (portability):** hotkey-accessed; pinned-task HUD (≤3 pins).
 - **v6 — Bulletin board (social):** public shared block + drawable chalkboard variant.
 
@@ -96,6 +100,18 @@ age (the saw); anything past that is cosmetic.
   hit-testing already work. Non-trivial GUI work (rows are composed at fixed Y per frame,
   so a live preview means offsetting the non-dragged rows' composed Y around the current
   hover target and recomposing as the target changes) — a polish-pass item, not core-tier.
+- **Funnel completed tasks into a separate "Done" view.** From ideation (2026-07-20): rather
+  than just sorting completed tasks toward the bottom (see the "Sort completed tasks toward the
+  bottom" UX note below), optionally remove them from the read/edit row lists entirely and
+  surface them in a dedicated third view of completed tasks. The "hide completed from the
+  read/edit views" behavior should be a toggle exposed only in the editor view's options
+  component (not the read view). Depends on the unified custom-drawn row list (row-list-rework)
+  landing first, since a third view should reuse the same shared row renderer; also interacts
+  with the read/edit view unification. Likely its own OpenSpec change after the rework stages.
+  A data-model question to resolve first: is "done" enough to drive this, or does funneling
+  imply a separate completed-collection the way archiving would? See also the v4 writing-desk
+  kanban idea above — the desk tier may be the fuller home for this (Active/Backlog/Completed
+  columns), with the lectern getting only the lighter hide-completed toggle.
 - **Partial-row visibility at the scroll boundary (cull → clip).** From playtesting feedback
   (2026-07-20, two screenshots one wheel-tick apart): a row at the top/bottom edge pops
   fully in/out rather than being partially revealed/hidden as you scroll. This is the direct,

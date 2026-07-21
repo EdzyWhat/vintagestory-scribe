@@ -44,15 +44,24 @@ text-size preference (consistent with the existing checkbox-scaling requirement)
 - **THEN** its checkbox glyph reflects the task's current done state (a checked vs. unchecked
   appearance), drawn by the mod rather than the default engine switch
 
-### Requirement: Read-view checkbox toggles task done state
-The read view's task checkbox SHALL be interactive: clicking it toggles that task's done state
-through the existing server-authoritative mutation and sync path. No other part of a read-view
-row SHALL be interactive — the read view exposes no text editing, drag, or per-row icon controls.
+### Requirement: Read-view checkbox toggles task done state without the editor lock
+The read view's task checkbox SHALL be interactive: clicking it toggles that task's done state.
+Because the read view holds no editor lock, toggling done SHALL be an always-allowed server
+action that does NOT require acquiring the single-editor lock, applied server-authoritatively
+and re-synced to all viewers. A player SHALL be able to toggle a task's done state from the read
+view even while another player holds the editor lock. No other part of a read-view row SHALL be
+interactive — the read view exposes no text editing, drag, or per-row icon controls.
 
 #### Scenario: Clicking a read-view checkbox toggles done
 - **WHEN** the player clicks a task row's checkbox in the read view
-- **THEN** that task's done state flips, the change is applied server-authoritatively and synced
-  back, and the checkbox glyph updates to reflect the new state
+- **THEN** that task's done state flips, the change is applied server-authoritatively (without
+  requiring the editor lock) and synced back, and the checkbox glyph updates to reflect the new
+  state
+
+#### Scenario: Toggling done works while someone else is editing
+- **WHEN** a player clicks a read-view task checkbox while a different player holds the lectern's
+  editor lock
+- **THEN** the toggle is still applied and synced, and is not rejected for lack of the lock
 
 #### Scenario: The rest of a read-view row is inert
 - **WHEN** the player clicks or hovers a read-view row anywhere other than its checkbox

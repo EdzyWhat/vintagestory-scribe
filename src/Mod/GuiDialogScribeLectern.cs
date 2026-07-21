@@ -64,6 +64,16 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         if (IsDuplicate) return;
 
+        // -------------------------------------------------------------------------------------
+        // TEMP SAMPLE SEED (row-list-rework S1): the read view now renders custom ScribeRowElements,
+        // but there is no edit-in-place yet (S2) to author content on this Mac, so seed some junk
+        // rows into an empty document to have something realistic to look at -- a mix of tasks and
+        // notes plus one deliberately long line to stress wrapping/clipping. Purely a client-side
+        // display convenience: it mutates only the locally-cached Document, never persists or sends
+        // anything. DELETE this whole block (and SeedSampleContentIfEmpty below) once S2's editor
+        // can create rows normally.
+        SeedSampleContentIfEmpty();
+
         EnterMode(isEditorMode, documentBytes);
 
 #if DEBUG
@@ -139,6 +149,25 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         debugSliderIds.Clear();
     }
 #endif
+
+    /// <summary>TEMP (row-list-rework S1): seeds sample rows into an empty local document so the
+    /// custom read view has content to render before S2's edit-in-place exists. See the call site
+    /// in the constructor; delete both together when S2 lands. Client-only: never persisted or sent.</summary>
+    private void SeedSampleContentIfEmpty()
+    {
+        var doc = lectern.Document;
+        if (doc.Blocks.Count > 0) return;
+
+        doc.AddTask("Gather 32 firewood");
+        doc.AddTask("Smelt copper for a pickaxe");
+        doc.ToggleTask(1);
+        doc.AddTextSection("Remember: the abandoned mineshaft is two ridges east, past the birch grove.");
+        doc.AddTask("Trade rusty gears at the trader before winter");
+        doc.AddTextSection("A deliberately long note to stress text wrapping and boundary clipping: the quick brown fox jumps over the lazy dog, then wanders off to find enough sailcloth, resin, and iron bloom to finish the second floor of the cabin before the first snow.");
+        doc.AddTask("Plant flax near the water");
+        doc.AddTask("Fire the clay bricks");
+        doc.ToggleTask(7);
+    }
 
     private CairoFont RowFont() =>
         CairoFont.TextInput().WithFontSize((float)(GuiStyle.NormalFontSize * clientConfig.TextSizeScale));
@@ -264,11 +293,25 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         rowListScrollValue = value;
 
-        // Rows are baked at a viewport-relative Y (see ComposeReadView/ComposeEditorView pass 2),
-        // so visual movement on scroll now comes only from recomposing at the new scroll value --
-        // there is no parent fixedY shift to nudge live anymore (design.md Decision 4, third
-        // correction). With RowListCullBuffer == 0 the composed range is exactly the visible
-        // window, so any scroll movement escapes it and needs a recompose.
+        // Read view (row-list-rework S1): rows are custom ScribeRowElements drawn in the
+        // interactive pass, which the BeginClip scissor clips natively. Scrolling is therefore the
+        // plain vanilla idiom -- shift the content parent's fixedY and recalc; every row's renderY
+        // (and its hit-test absY) follows in one call, with no cull, no recompose, and no
+        // drag-handoff needed (all of which the editor branch below still needs until S2 reworks
+        // it too). This is the whole payoff of the rework: smooth sub-pixel scrolling for free.
+        if (!IsEditorMode)
+        {
+            rowListContentBounds.fixedY = 0 - value;
+            rowListContentBounds.CalcWorldBounds();
+            return;
+        }
+
+        // Editor view (unchanged, pre-rework path): rows are baked at a viewport-relative Y (see
+        // ComposeEditorView pass 2), so visual movement on scroll comes only from recomposing at
+        // the new scroll value -- there is no parent fixedY shift to nudge live (design.md
+        // Decision 4, third correction). With RowListCullBuffer == 0 the composed range is exactly
+        // the visible window, so any scroll movement escapes it and needs a recompose. (S2 will
+        // move the editor view onto the read view's native-clip path above and delete this.)
         double viewportTop = value;
         double viewportBottom = value + clientConfig.VisibleListHeight;
         if (viewportTop < rowListComposedRangeTop || viewportBottom > rowListComposedRangeBottom)
@@ -404,24 +447,24 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         var bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
         bgBounds.BothSizing = Vintagestory.API.Client.ElementSizing.FitToChildren;
 
-        // Pass 1: measure every row's position/height, regardless of scroll position -- needed
-        // for the real total content height (for the scrollbar) and to know each row's y before
-        // deciding, below, which ones actually fall within the culled viewport window. This is
-        // the same per-row measurement work the old single-pass version already did; splitting it
-        // out doesn't add cost, it just runs before the compose pass instead of interleaved with it.
+        // Pass 1: measure every row's position/height. Unlike the editor view (and the old read
+        // view), the read view now draws each row as a ScribeRowElement in the interactive pass,
+        // which the dialog's BeginClip scissor clips NATIVELY (row-list-rework S1) -- so there is
+        // no viewport culling and no viewport-relative Y here: every row is composed once at its
+        // absolute content Y, and scrolling is a plain parent-fixedY shift (see OnRowListScroll's
+        // read-view branch and SetupRowListScrollbar). Row height = the wrapped text height plus
+        // the ruling overhead the row draws around it (ScribeRowElement.RulingOverhead).
         var rowYs = new double[blocks.Count];
         var rowHeights = new double[blocks.Count];
         double contentY = 0;
         for (int i = 0; i < blocks.Count; i++)
         {
-            var block = blocks[i];
-            string text = block.IsTask
-                ? (block.Done ? "[x] " : "[ ] ") + block.Text
-                : block.Text;
-
-            double minHeight = ScribeBlockRowCell.RowHeight(block, clientConfig);
+            // ScribeRowElement.RowHeightFixed is the single source of row height, shared with the
+            // element's own drawing so the baked surface is always tall enough for the text (it
+            // handles the scaled-vs-fixed unit conversion that a naive measure got wrong -- see
+            // its doc comment).
             rowYs[i] = contentY;
-            rowHeights[i] = ScribeBlockRowCell.MeasureWrappedHeight(capi, text, RowFont(), listWidth, minHeight);
+            rowHeights[i] = ScribeRowElement.RowHeightFixed(capi, blocks[i], listWidth, RowFont(), clientConfig);
             contentY += rowHeights[i] + rowSpacing;
         }
 
@@ -432,24 +475,15 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             contentY = hintHeight + rowSpacing;
         }
 
-        // Clamp against the just-measured real content height before computing the culled
-        // window below, so a document that shrank (e.g. rows deleted) while scrolled down
-        // doesn't request a window past the end of the new, shorter content.
+        // Clamp the restored scroll position against the real content height, so a document that
+        // shrank while scrolled down (e.g. a task synced away) doesn't stay scrolled past the end.
         rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - clientConfig.VisibleListHeight));
-        double windowTop = System.Math.Max(0, rowListScrollValue - RowListCullBuffer);
-        double windowBottom = rowListScrollValue + clientConfig.VisibleListHeight + RowListCullBuffer;
 
         // The row list lives inside a fixed-height clipped region so a long document scrolls
-        // instead of growing the dialog (and, before this, running off the bottom of the
-        // screen) -- see VSAPI-NOTES.md for the BeginClip/AddVerticalScrollbar idiom this
-        // follows (confirmed against GuiDialogTrader/GuiDialogBlockEntityInventory's own
-        // usage). rowListContentBounds is the single element every row/hint text is parented
-        // under; OnRowListScroll shifts its fixedY on scroll -- InsideClipBounds propagation
-        // (set automatically by BeginClip for every element added inside it, confirmed via
-        // decompile) makes mouse hit-testing scroll-aware for free, no manual offset math.
-        // BeginClip/PushScissor does NOT, however, visually clip this row list's rendering (see
-        // RowListCullBuffer's doc comment) -- pass 2 below only adds rows within the buffered
-        // window instead of relying on the engine's scissor to hide the rest.
+        // instead of growing the dialog -- see VSAPI-NOTES.md for the BeginClip/AddVerticalScrollbar
+        // idiom. contentBounds is the single parent every row is added under; the read-view branch
+        // of OnRowListScroll shifts its fixedY on scroll and the BeginClip scissor clips the
+        // interactive-pass row textures natively (no cull, no recompose-on-scroll).
         var clipBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.VisibleListHeight);
         var scrollbarBounds = ElementStdBounds.VerticalScrollbar(clipBounds);
         var contentBounds = ElementBounds.Fixed(0, 0, listWidth, contentY);
@@ -461,42 +495,29 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             .BeginClip(clipBounds)
                 .BeginChildElements(contentBounds);
 
-        // Pass 2: only add rows (and their dividers) FULLY CONTAINED within the buffered
-        // window -- this is the actual culling; everything outside is never composed at all
-        // rather than composed-and-hidden. Full containment, not mere overlap: nothing here
-        // visually clips a composed row's rendering (see RowListCullBuffer's doc comment), so
-        // a row that only partially overlaps the window would still render at its full,
-        // unclipped height -- its portion outside the window bleeding straight past the
-        // dialog's drawn frame with nothing to stop it. Confirmed live: with the prior
-        // any-overlap test, scrolling to a position where a row straddled windowBottom made
-        // that row's tail (up to a full row's height) render past the dialog's bottom edge.
-        // Excluding a straddling row entirely (rather than drawing it clipped) is correct
-        // given culling, not clipping, is what hides overflow -- the row simply pops in once
-        // it scrolls fully into view.
+        // Compose every row at its absolute content Y as a custom ScribeRowElement. The element
+        // bakes its own texture (checkbox glyph + text + lined-paper ruling) and blits it in the
+        // interactive pass, where the clip scissor applies -- so a row at the scroll boundary is
+        // drawn partially clipped rather than popping in/out, and rows past the edge are hidden by
+        // the scissor, not by never composing them.
         for (int i = 0; i < blocks.Count; i++)
         {
-            double rowTop = rowYs[i];
-            double rowBottom = rowTop + rowHeights[i];
-            if (rowTop < windowTop || rowBottom > windowBottom) continue;
-
             var block = blocks[i];
-            string text = block.IsTask
-                ? (block.Done ? "[x] " : "[ ] ") + block.Text
-                : block.Text;
+            var rowBounds = ElementBounds.Fixed(0, rowYs[i], listWidth, rowHeights[i]);
 
-            // Position each row at a VIEWPORT-RELATIVE Y (rowTop - scroll), not its absolute
-            // content Y, so BOTH render passes bake at the already-scrolled coordinate (design.md
-            // Decision 4, third correction; VSAPI-NOTES.md's "static vs interactive render pass"
-            // entry). Shifting the content parent's fixedY instead only moves the interactive
-            // pass (renderY); the static pass (drawY, a once-baked texture) has no scroll term, so
-            // an all-static read-view row wouldn't move at all -- it would just cull in/out in
-            // place. Culling above already guarantees rowTop >= scroll (full containment), so this
-            // is always >= 0.
-            double rowDrawTop = rowTop - rowListScrollValue;
-            var rowBounds = ElementBounds.Fixed(0, rowDrawTop, listWidth, rowHeights[i]);
-
-            SingleComposer.AddStaticText(text, RowFont(), rowBounds);
-            if (i < blocks.Count - 1) AddRowDivider(rowDrawTop + rowHeights[i], listWidth);
+            SingleComposer.AddInteractiveElement(
+                new ScribeRowElement(
+                    capi,
+                    rowBounds,
+                    ScribeRowMode.Read,
+                    blockIndex: i,
+                    isTask: block.IsTask,
+                    done: block.Done,
+                    text: block.Text,
+                    font: RowFont(),
+                    config: clientConfig,
+                    onToggleClicked: block.IsTask ? OnReadViewToggleTask : null),
+                ScribeBlockRowCell.TextKey(i));
         }
 
         if (blocks.Count == 0)
@@ -505,8 +526,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         }
 
         rowListContentBounds = contentBounds;
-        rowListComposedRangeTop = windowTop;
-        rowListComposedRangeBottom = windowBottom;
 
         SingleComposer
                 .EndChildElements()
@@ -521,6 +540,28 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         SingleComposer.EndChildElements().Compose();
 
         SetupRowListScrollbar(contentY);
+
+        // Native clipping means scrolling is a parent-fixedY shift; apply the restored scroll
+        // position now (SetupRowListScrollbar set the thumb but fires no scroll callback), so a
+        // recompose triggered by a live document resync keeps its scroll offset.
+        rowListContentBounds.fixedY = 0 - rowListScrollValue;
+        rowListContentBounds.CalcWorldBounds();
+    }
+
+    /// <summary>Read-view task checkbox click: fire-and-forget a lock-free toggle to the server.
+    /// The read view holds no editor lock (see BlockEntityScribeLectern), so this uses the
+    /// dedicated <see cref="ScribeToggleTaskMessage"/> rather than the lock-gated edit path. No
+    /// optimistic local mutation -- the server applies it and re-syncs, and FromTreeAttributes ->
+    /// RefreshReadView recomposes with the new state.</summary>
+    private void OnReadViewToggleTask(int index)
+    {
+        capi.Network.GetChannel(ScribeModSystem.NetworkChannelName).SendPacket(new ScribeToggleTaskMessage
+        {
+            PosX = lectern.Pos.X,
+            PosY = lectern.Pos.Y,
+            PosZ = lectern.Pos.Z,
+            BlockIndex = index,
+        });
     }
 
     /// <summary>Post-Compose scrollbar wiring shared by both views. Sets the mouse-wheel step to

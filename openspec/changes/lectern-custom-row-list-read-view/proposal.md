@@ -25,8 +25,13 @@ lower-risk view proves the element and its look before the editor (S2) depends o
   can later be swapped for an image without touching layout logic.
 - Replace the read view's `GuiElementSwitch`-based checkbox with a **custom-drawn checkbox
   glyph**, with a clearly-marked seam for the later stamp/erase animation (S4).
-- The read-view checkbox is **interactive**: clicking it toggles the task's done state
-  (server-authoritative, as today). Nothing else in the read view becomes interactive.
+- The read-view checkbox is **interactive**: clicking it toggles the task's done state.
+  Because the read view holds no editor lock (it is deliberately look-only today), toggling
+  done becomes its own **always-allowed, lock-free server action** via a new dedicated message
+  (`ScribeToggleTaskMessage`: block position + block index) that the server applies without
+  requiring the single-editor lock — distinct from the lock-gated full-document edit path.
+  Anyone viewing the lectern can tick a task off, even while another player holds the editor
+  lock. Nothing else in the read view becomes interactive.
 - Establish a shared `RowTextLayout` metric (single source of truth for text x-offset,
   baseline, and font) that the row's text draw reads from now, so S2's floating edit input can
   align to the exact same pixels.
@@ -57,9 +62,11 @@ stamp/erase animation (S4).
   instances inside the existing `BeginClip` region (scroll via `fixedY` shift, retiring the
   read-view scroll workarounds); new shared `RowTextLayout` helper; config knobs for ruling
   color/alpha/thickness and its text-scaling padding; temporary sample-content seeding.
-- **No `src/Core/` changes:** Core's document/task model is untouched; toggling done from the
-  read view reuses the existing server-authoritative mutation + sync path. No new dependencies.
-- **No persistence/network changes:** no codec version bump, no new packets — this is a
-  client-side rendering + existing-mutation change, covered by manual Mac playtest
-  (`build/restage.sh`).
+- **No `src/Core/` changes:** Core's `ScribeDocument.ToggleTask(index)` already exists and is
+  bounds-safe / task-only; the read-view toggle reuses it server-side. No new dependencies.
+- **One new network message:** `ScribeToggleTaskMessage` (client→server), registered on the
+  existing channel, applied server-side without the editor lock and re-synced via the existing
+  `MarkDirty(redrawOnClient: true)` path. No codec version bump (document format unchanged). The
+  new message + its server handler are the only network-surface additions; covered by manual Mac
+  playtest (`build/restage.sh`).
 - **Follows staging:** S1 is independently shippable; S2–S4 build on the element it lands.
