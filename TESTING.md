@@ -7,9 +7,8 @@ actually confirms it. Hand-checking a box with no verdict line will be reverted 
 regeneration.
 
 **How to refer to an item across machines:** quote its **code** (the `` `xxxxxxxx` ``
-fingerprint at the start of each item) and its **change + task number** (e.g.
-"skeuomorphic-lectern-gui 3.5") — the bare task number alone is ambiguous, since more than
-one change has a "3.5".
+fingerprint the app shows on each item). Item text leads with its task number in parentheses
+(e.g. `(3.5)`); the number is unambiguous under its spec group heading.
 
 **Before testing scrolling with the ImGui slider window open:** the ImGui overlay grabs the
 mouse while its window is expanded, so click-and-drag on the game's scrollbar won't work
@@ -18,10 +17,10 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
 
 ## skeuomorphic-lectern-gui
 
-- [ ] `9e2c1a30` **Scrolling a long list (skeuomorphic-lectern-gui 3.5).** Open a lectern
-      and add enough tasks and notes that they don't all fit in the box and a scrollbar
-      appears on the right. Test all three ways of scrolling, in **both** the plain
-      right-click read view and the shift+right-click edit view:
+- [ ] `9e2c1a30` **(3.5) Scrolling a long list.** Open a lectern and add enough tasks and
+      notes that they don't all fit in the box and a scrollbar appears on the right. Test all
+      three ways of scrolling, in **both** the plain right-click read view and the
+      shift+right-click edit view:
       1. **Mouse wheel:** roll the wheel up and down. The whole list of rows should slide
          up and down smoothly as one piece — the text, checkboxes, and any icons all moving
          together. Each notch of the wheel should move the list by about one task row (not
@@ -38,77 +37,74 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
          the very last row and it's fully visible, and back to the very first — nothing is
          permanently cut off at the top or bottom, and no row spills out below the box's
          bottom edge or above its title.
-- [ ] `c0c0fc4d` **Dialog fits and reads well (skeuomorphic-lectern-gui 4.4).** Place a
-      lectern and right-click to open it at normal standing distance (don't back away or
-      step unusually close). Check three things, and if any looks wrong say which one and
-      what was off (rather than just pass/fail):
+- [ ] `c0c0fc4d` **(4.4) Dialog fits and reads well.** Place a lectern and right-click to
+      open it at normal standing distance (don't back away or step unusually close). Check
+      three things, and if any looks wrong say which one and what was off (rather than just
+      pass/fail):
       (a) the whole dialog fits on screen with nothing cut off at the edges and nothing
       overlapping your hotbar or other on-screen elements, at the default GUI scale;
       (b) the row text at the default text size is comfortably readable without leaning
       toward the screen;
       (c) the shape (taller than it is wide) looks deliberate, not squeezed or cramped.
-- [ ] `e624a788` **Backdrop renders correctly (skeuomorphic-lectern-gui 5.4).** With the
-      lectern open, confirm the parchment backdrop image sits correctly behind the content
-      in both read and edit view, and that no row is drawn underneath an opaque part of the
-      backdrop (i.e. no text hidden or half-hidden behind the background).
-- [ ] `805e78a7` **Hovering icons doesn't disturb typing (skeuomorphic-lectern-gui 6.6).**
-      In edit view, click into a note and start typing. While typing, move your mouse over a
-      different row so its delete/pin icons appear, then move it away again. Your typing
-      cursor should stay exactly where it was and your text should be unaffected — moving
-      the mouse over other rows must not interrupt what you're typing.
-- [x] `0f961614` **Pin survives reload (skeuomorphic-lectern-gui 7.5).** Pin a task, switch
-      between read and edit view, then fully quit the game to desktop and relaunch. The task
-      should still be pinned.
+- [ ] `e624a788` **(5.4) Backdrop renders correctly.** With the lectern open, confirm the
+      parchment backdrop image sits correctly behind the content in both read and edit view,
+      and that no row is drawn underneath an opaque part of the backdrop (i.e. no text hidden
+      or half-hidden behind the background).
+- [ ] `805e78a7` **(6.6) Hovering icons doesn't disturb typing.** In edit view, click into a
+      note and start typing. While typing, move your mouse over a different row so its
+      delete/pin icons appear, then move it away again. Your typing cursor should stay exactly
+      where it was and your text should be unaffected — moving the mouse over other rows must
+      not interrupt what you're typing.
+- [x] `0f961614` **(7.5) Pin survives reload.** Pin a task, switch between read and edit view,
+      then fully quit the game to desktop and relaunch. The task should still be pinned.
       - **Confirmed 2026-07-20** (playtest report): pin survives view-switching and a full
         quit/relaunch, as specified.
       - *(Earlier note, still open as a separate backlog item, not this test:* the pin icon
         is currently only visible on hover, not always-shown once a task is pinned — a real
         UX gap but a design change, tracked separately.)
-- [ ] `88d4f7b2` **Full scroll-and-edit pass (skeuomorphic-lectern-gui 9.3).** With a list
-      long enough to scroll: scroll down partway, then in edit view drag a row by its handle
-      to reorder it (confirm it lands where you dropped it and the click lined up with the
-      row you grabbed); drag the text-size slider across its range (confirm rows grow/shrink
-      and re-wrap without overlapping); pin and unpin a task. Overall, confirm nothing
-      regressed versus how the lectern behaved before — no rows spilling out of the box, no
-      frozen or misplaced pieces, no lost clicks.
+- [ ] `88d4f7b2` **(9.3) Full scroll-and-edit pass.** With a list long enough to scroll:
+      scroll down partway, then in edit view drag a row by its handle to reorder it (confirm
+      it lands where you dropped it and the click lined up with the row you grabbed); drag the
+      text-size slider across its range (confirm rows grow/shrink and re-wrap without
+      overlapping); pin and unpin a task. Overall, confirm nothing regressed versus how the
+      lectern behaved before — no rows spilling out of the box, no frozen or misplaced pieces,
+      no lost clicks.
 
 ## add-lectern-block
 
-- [ ] `c127b9ad` **Multiplayer, separate lecterns (add-lectern-block 7.5).** With two
-      clients connected, give each a lectern. Confirm edits made on one player's lectern
-      don't bleed into the other's, and that when one player edits, the other sees the change
-      appear live in their read view of that same lectern.
-- [ ] `2a105a38` **Editor lock (add-lectern-block 7.6).** Have one player open a lectern in
-      edit view (holding the lock). Confirm a second player is refused edit access to that
-      same lectern but can still open it read-only, and that when the first player closes it
-      or disconnects, the lock releases so the second player can then edit.
+- [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
+      each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
+      and that when one player edits, the other sees the change appear live in their read view
+      of that same lectern.
+- [ ] `2a105a38` **(7.6) Editor lock.** Have one player open a lectern in edit view (holding
+      the lock). Confirm a second player is refused edit access to that same lectern but can
+      still open it read-only, and that when the first player closes it or disconnects, the
+      lock releases so the second player can then edit.
 
 ## add-imgui-configlib-tuning
 
-- [ ] `8a356779` **Debug sliders recompose live (add-imgui-configlib-tuning 2.6).** In a
-      Debug build, open the lectern and press VSImGui's toggle hotkey to show the overlay.
-      Drag each "Lectern Layout" slider and confirm the dialog updates live to match. Confirm
-      `scribe-client-config.json` on disk does NOT change until you press the "Save" button.
+- [ ] `8a356779` **(2.6) Debug sliders recompose live.** In a Debug build, open the lectern
+      and press VSImGui's toggle hotkey to show the overlay. Drag each "Lectern Layout" slider
+      and confirm the dialog updates live to match. Confirm `scribe-client-config.json` on disk
+      does NOT change until you press the "Save" button.
       - **Confirmed 2026-07-20** (playtest report): "All functional."
-- [ ] `c2729a2d` **Diagnose the frozen-chrome symptom (add-imgui-configlib-tuning 5.1).**
-      *This item predates the scroll fixes and was written to diagnose them; re-evaluate
-      whether it's still needed now that skeuomorphic-lectern-gui 3.4a is in.* Using the live
-      Debug sliders, drag `VisibleListHeight` and `RowSpacing` and watch the edit-view rows:
-      the goal is to see whether the parts of a row that used to freeze in place (checkbox
-      outlines, text-box borders, drag handles) now move together with the rest of the row as
-      the list resizes.
+- [ ] `c2729a2d` **(5.1) Diagnose the frozen-chrome symptom.** *This item predates the scroll
+      fixes and was written to diagnose them; re-evaluate whether it's still needed now that
+      3.4a is in.* Using the live Debug sliders, drag `VisibleListHeight` and `RowSpacing` and
+      watch the edit-view rows: the goal is to see whether the parts of a row that used to
+      freeze in place (checkbox outlines, text-box borders, drag handles) now move together
+      with the rest of the row as the list resizes.
       - **Not re-tested against the fresh build yet.** The earlier "unsure" verdict was
         against a stale build (without the scroll fixes) and reflected unclear wording, not a
         real observation — disregard it.
-- [ ] `8c7c2b2a` **No regression from the new references (add-imgui-configlib-tuning 4.4).**
-      Fully relaunch the client after restaging and confirm the lectern still opens and
-      behaves normally, with no errors from the added VSImGui/ConfigLib references.
+- [ ] `8c7c2b2a` **(4.4) No regression from the new references.** Fully relaunch the client
+      after restaging and confirm the lectern still opens and behaves normally, with no errors
+      from the added VSImGui/ConfigLib references.
       - **Confirmed 2026-07-20** (playtest report): opens and behaves normally.
-- [ ] `171935d3` **ConfigLib panel edits apply (add-imgui-configlib-tuning 3.4).** With both
-      ConfigLib and VSImGui installed, open ConfigLib's in-game settings panel, change an
-      exposed "Lectern Layout" field, and save. Confirm the lectern reflects the new value.
+- [ ] `171935d3` **(3.4) ConfigLib panel edits apply.** With both ConfigLib and VSImGui
+      installed, open ConfigLib's in-game settings panel, change an exposed "Lectern Layout"
+      field, and save. Confirm the lectern reflects the new value.
       - **Confirmed 2026-07-20** (playtest report): lectern reflects the saved value.
-- [ ] `d83db914` **Loads without ConfigLib (add-imgui-configlib-tuning 3.5).** With ConfigLib
-      NOT installed, confirm the mod still loads and the lectern opens normally, with no
-      missing-dependency warning.
+- [ ] `d83db914` **(3.5) Loads without ConfigLib.** With ConfigLib NOT installed, confirm the
+      mod still loads and the lectern opens normally, with no missing-dependency warning.
       - **Confirmed 2026-07-20** (playtest report): loads and opens normally.
