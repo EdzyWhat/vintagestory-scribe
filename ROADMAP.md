@@ -151,7 +151,15 @@ For the full design record and rationale, see the project plan.
 ## Open decisions (surfaced by the 2026-07-21 exploration; carried into each spec)
 
 These are the cross-cutting forks the specs couldn't settle without you. They don't block the
-specs (each documents its assumed default) but they shape sequencing and scope:
+specs (each documents its assumed default) but they shape sequencing and scope.
+
+> **Coherence review (2026-07-21):** the eight specs were written in parallel and blind to
+> each other, so several extend the same `src/Core/` surface incompatibly — two specs both
+> claim codec "v4", two invent different entry-timestamp representations, two model
+> immutability on different axes, and `v4`/`v6` both need one shared access-policy enum.
+> These are reconciled in **`docs/specs/README.md` → "Shared Core-model conventions"**, which
+> is binding on any spec becoming a proposal. Decisions #4 and #5 below are the two forks from
+> that review that still need *you*, not just a convention.
 
 1. **v4 faction-backing** — **DECIDED 2026-07-21: defer.** Ship the personal writing desk first;
    leave faction backing (built-in player groups vs. shared owner-UID list vs. third-party mod)
