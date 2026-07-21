@@ -358,6 +358,53 @@ VSImGui entirely (Mod.csproj `Configuration == 'Debug'` Condition) -- so even on
 hardware the sliders only exist in a Debug stage. ConfigLib's own settings panel is pure
 VS GUI (no ImGui) and works on any platform as an alternative live-ish editing path.
 
+## Text-input caret / selection conventions
+
+**Symptom: before building a custom in-place editor, need to know whether the built-in
+`GuiElementTextInput`/`GuiElementTextArea` already handle desktop caret conventions
+(word-skip, jump-to-line-end, shift-extend-select, copy/paste) or must be subclassed.**
+
+Almost all of it is already in `GuiElementEditableTextBase` (the shared base of both
+`GuiElementTextInput` — single-line — and `GuiElementTextArea` — `multilineMode=true`).
+Confirmed by decompile of `OnKeyDownInternal` / `MoveCursor` / `OnControlAction`
+(`KeyCode` ints are `GlKeys`: Left=47, Right=48, Up=45, Down=46, Home=58, End=59,
+Enter=49, Tab=52, BackSpace=53, Delete=55). What ships for free:
+
+- **Word-skip:** `MoveCursor(dir, wholeWord: args.CtrlPressed)` — Ctrl+Left/Right jumps by
+  word (whitespace-then-word-run scan via `IsWordChar`). Ctrl+BackSpace/Delete deletes a
+  word (`OnDeleteWord`).
+- **Line ends:** Home/End go to start/end of the *current wrapped line*; **Ctrl+Home/End**
+  go to start/end of the *whole text*.
+- **Shift-extend-select:** any Shift+arrow/Home/End sets/extends `selectedTextStart`; typing
+  or a bare arrow collapses it. Double-click selects the word (`SelectWordAtCursor`).
+- **Clipboard / select-all:** `OnControlAction` handles Ctrl **a/c/x/v** — and it fires on
+  `args.CtrlPressed || args.CommandPressed`, so on **macOS Cmd+A/C/X/V already work**.
+
+**The two real gaps (this is what a subclass/wrapper must add), both matter for us:**
+
+1. **The base treats Ctrl and Cmd differently.** `OnControlAction` (copy/paste/select-all)
+   accepts *either* Ctrl or Cmd — but **caret navigation** (`MoveCursor`'s word-skip,
+   Ctrl+Home/End) is gated on `args.CtrlPressed` *only*, never `CommandPressed`. So on a
+   Mac, Cmd+Arrow does **not** word-skip or jump to line ends. Worse: **`AltPressed` is a
+   hard early-out** — `OnKeyDownInternal` begins `if (args.AltPressed) { args.Handled = true;
+   return; }`, so Option/Alt+Arrow (the Mac word-skip idiom) is swallowed and does nothing.
+   The user explicitly wanted Cmd+Right→line-end and Alt/Option→word-skip (their S2 answer
+   5.B), so on macOS **neither works out of the box** — the base is Windows-keyed. Modifiers
+   themselves are populated correctly per-OS (Lib maps Cmd→`CommandPressed`, Option→
+   `AltPressed`); the base class just doesn't route the Mac ones to navigation.
+2. **No row-to-row nav.** In single-line mode Tab is left unhandled (`handled = KeyCode !=
+   52`) and Enter defers to the caller (`handled = false`); in multiline mode Enter inserts
+   a newline (`OnKeyEnter`). There is no built-in Shift+Tab / Enter-moves-to-next-row — that
+   is inherently our concern (it's cross-element), to be wired at the dialog level via the
+   `OnKeyDown`/focus handoff, not inside the element.
+
+**Implication for S2:** we do NOT need to reimplement selection/caret/clipboard — subclass
+`GuiElementTextInput` (or `TextArea`) and override `OnKeyDown` to (a) re-route Mac Cmd/
+Option arrow combos to the existing `MoveCursor(..., wholeWord)` / Home-End logic before
+`base.OnKeyDown` swallows Alt, and (b) intercept Tab/Shift+Tab/Enter for row navigation and
+hand focus to the sibling row. Everything else is inherited. `OnCaretPositionChanged` is a
+public hook if the floating field needs to report caret pos back to the dialog.
+
 ## Entry template
 
 ```
