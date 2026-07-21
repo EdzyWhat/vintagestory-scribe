@@ -51,6 +51,14 @@ age (the saw); anything past that is cosmetic.
 
 ### Parked (later)
 
+- **BUG — editor view doesn't auto-close on walk-away.** From playtesting (2026-07-21,
+  TESTING.md item `9c04c5c7` / add-lectern-block 7.8): opening the editor and walking hundreds
+  of blocks away never closes the dialog. Expected (and specced): leaving interaction range
+  auto-closes the GUI and force-flushes the pending edit (see add-lectern-block task 7.8 and the
+  "walk-away flush" autosave behavior). The range-check-and-close appears not to fire; the flush
+  half couldn't even be reached in testing. Needs a code fix in the lectern dialog's
+  proximity/close handling, then a retest of both the close and the flush. Not row-list-rework
+  scope — a distinct defect in the existing dialog lifecycle.
 - Stamping mechanic for the clay tablet (custom UI + animation + sound — a large,
   standalone effort).
 - Paper progression (reed/papyrus → parchment).

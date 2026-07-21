@@ -131,23 +131,36 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
 
 ## add-lectern-block
 
-- [ ] `c9c26fc3` **(7.2) Place, edit, and autosave.** Place a lectern from creative inventory.
+- [x] `c9c26fc3` **(7.2) Place, edit, and autosave.** Place a lectern from creative inventory.
       Plain right-click should open a read view with no edit controls; shift+right-click should
       open the editor view. In the editor, add a couple of tasks, tick one done, and edit the
       note. Confirm edits save on their own — a moment after you stop typing (and before you
       close the dialog), the change should already have gone through, with no Save button to press.
-- [ ] `97938f33` **(7.3) Survives a reload.** After editing a lectern, save and quit the world,
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T08-13-42): works as described —
+        read/editor open on plain vs. shift right-click, and edits autosave with no Save button.
+- [x] `97938f33` **(7.3) Survives a reload.** After editing a lectern, save and quit the world,
       then load it back. The lectern's tasks and note should all still be there.
-- [ ] `89290239` **(7.4) View toggle shows fresh content.** From the editor view, use the in-GUI
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T08-13-42): after quit-and-return the
+        lecterns still hold their saved tasks and note.
+- [x] `89290239` **(7.4) View toggle shows fresh content.** From the editor view, use the in-GUI
       toggle to switch to read view and confirm the edit you just typed shows up (not a stale
       older version). From the read view, click the toggle to request the editor view back.
-- [ ] `32876056` **(7.7) Reorder, tool panel, and text size.** In the editor view, mouse-drag a
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T08-13-42): toggling editor→read shows
+        the just-typed edit (not stale); read→editor toggle works.
+- [x] `32876056` **(7.7) Reorder, tool panel, and text size.** In the editor view, mouse-drag a
       row to reorder it and confirm it lands where you dropped it. Collapse and expand the tool
       panel. Drag the text-size slider and confirm the font scales; reopen the lectern and confirm
       the text-size preference stuck.
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T08-13-42): drag-reorder, tool-panel
+        collapse/expand, and text-size scaling + persistence all function as expected.
 - [ ] `9c04c5c7` **(7.8) Walk-away flushes the edit.** Open the editor view, make an edit, then
       walk out of range without closing the dialog. The dialog should auto-close and the edit
       should be saved (reopen and confirm it persisted) rather than lost.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T08-13-42): the editor view never
+        auto-closes on walk-away — the tester walked hundreds of blocks and the dialog stayed
+        open, so the flush half of the test couldn't even be reached. The walk-away auto-close
+        (range check that should close the GUI + flush the edit) appears not to fire. Needs a
+        code fix, then a retest of both the close and the flush. Logged in ROADMAP.md.
 - [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
       each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
       and that when one player edits, the other sees the change appear live in their read view
@@ -177,9 +190,12 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       watch the edit-view rows: the goal is to see whether the parts of a row that used to
       freeze in place (checkbox outlines, text-box borders, drag handles) now move together
       with the rest of the row as the list resizes.
-      - **Not re-tested against the fresh build yet.** The earlier "unsure" verdict was
-        against a stale build (without the scroll fixes) and reflected unclear wording, not a
-        real observation — disregard it.
+      - **Obsolete 2026-07-21** (playtest report 2026-07-21T08-13-42): user confirms a row's
+        elements now move together as one unit with no separate static/interactive pieces, and
+        asked to disregard this item. It was a diagnostic written against the pre-rework mixed
+        static+interactive architecture; the row-list rework replaces that rendering approach
+        wholesale (S1 already unified the read view; S2 does the editor), so the slider-based
+        frozen-chrome diagnosis no longer applies. Retired rather than deleted.
 - [ ] `8c7c2b2a` **(4.4) No regression from the new references.** Fully relaunch the client
       after restaging and confirm the lectern still opens and behaves normally, with no errors
       from the added VSImGui/ConfigLib references.
