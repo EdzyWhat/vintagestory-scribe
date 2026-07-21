@@ -25,7 +25,9 @@ mod dependencies; edits stay server-authoritative through the existing lock-gate
 - Exactly one live `GuiElementTextInput` at a time, repositioned onto the focused row, aligned
   to the static label via `RowTextLayout` so focus handoff is visually seamless.
 - Mac caret conventions (Cmd+Arrow line-ends, Alt/Option+Arrow word-skip, Shift-extend-select)
-  and row navigation (Enter advance, Shift+Tab retreat, Esc revert, blur commit).
+  and row navigation (Enter advance, Shift+Tab retreat, Esc commits-and-closes the dialog, blur
+  commit). *(Esc was originally specced as revert-in-place; reversed to close-the-dialog after
+  the 2026-07-21 playtest — see tasks.md 4.4.)*
 - One unified row-list width across both views; the temp sample seed removed; the old editor
   scroll path deleted.
 
@@ -60,7 +62,8 @@ navigation), the override:
 - On `AltPressed` + Left/Right → call the inherited `MoveCursor(dir, wholeWord: true)`.
 - Preserve `ShiftPressed` semantics so selection extends (the base already extends selection on
   Shift; we just must not let it swallow the Alt/Cmd combos first).
-- Intercept Enter / Shift+Tab / Esc for row navigation and revert (below), else defer to base.
+- Intercept Enter / Shift+Tab for row navigation (below); let Esc fall through to the base so it
+  closes the dialog (2026-07-21 decision), else defer to base.
 
 - **Why subclass:** the spike confirmed all the hard machinery (selection model, `MoveCursor`
   word scan, clipboard, Home/End) already exists in `GuiElementEditableTextBase`; only the
@@ -72,9 +75,11 @@ navigation), the override:
 ### 3. Row navigation and commit live at the dialog/focus level
 Enter and Shift+Tab are cross-element (they move focus between rows), so the subclass surfaces
 them to the dialog, which commits the current row (through `ScribeEditDocumentMessage`) and
-moves focus to the sibling `ScribeRowElement`'s input position. Esc reverts the focused row to
-its stored `block.Text` (no commit). Losing focus (blur) commits — matching the existing edit
-path so no edit is silently dropped.
+moves focus to the sibling `ScribeRowElement`'s input position. Esc closes the dialog (the base
+`GuiDialog` Esc-close; the subclass no longer intercepts it) — blur-commit fires on the way out,
+so it's a commit-and-close, not a discard. *(Originally specced as revert-in-place; reversed
+2026-07-21 per playtest — tasks.md 4.4.)* Losing focus (blur) commits — matching the existing
+edit path so no edit is silently dropped.
 
 - **Why keep commits on the existing lock-gated path:** the editor already holds the
   single-editor lock; `ApplyEdit` is server-authoritative and synced. S2 changes *where the

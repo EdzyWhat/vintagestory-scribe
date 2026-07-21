@@ -21,6 +21,72 @@ mouse while its window is expanded, so click-and-drag on the game's scrollbar wo
 while it's open. **Collapse the ImGui window first**, then test dragging. (Slider values you
 set stay applied while it's collapsed — you only need it expanded to *move* a slider.)
 
+## lectern-edit-in-place-rows
+
+> S2 of the row-list rework (committed `466a1a4`, restaged Release 2026-07-21). The editor
+> view now uses the same custom `ScribeRowElement` as the read view, with one floating input
+> on the focused row. **Known scope note carried into these tests:** moving onto the shared
+> row element removed the editor's per-row **delete and pin** buttons (the shared row layout
+> has no icon gutters) — reorder returns in S3, but delete/pin have no replacement yet. That's
+> a flagged regression under review, not something these items test.
+
+- [x] `8956eef7` **(6.1) Build + test gate.** Debug and Release build clean; `dotnet test`
+      (Core.Tests) all green.
+      - **Confirmed 2026-07-21** by re-running the gate directly this session (not just trusting
+        the agent report): Debug build 0/0, Release build 0/0, Core.Tests 35/35 passed.
+- [x] `8275246c` **(6.2) Caret word/line navigation.** In an editor row, press Cmd+Arrow (jump
+      to line ends), Option+Arrow (skip by word), and hold Shift with each to extend the
+      selection. Confirm every one moves the caret/selection as described AND none of them types
+      a stray character into the text.
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T13-03-17): "All these functions
+        work." — word/line caret nav and shift-extend all behave, no stray characters.
+- [ ] `8634ee5d` **(6.3) Commit, navigate, revert, persist.** In an editor row: press Enter
+      (commits the edit and moves focus to the next row down), Shift+Tab (commits and moves up),
+      and Esc (throws away the in-progress edit, restoring the row's prior text); then click
+      away from a row (should commit). Finally switch read↔edit view and fully reload the world —
+      confirm the committed edits are all still there.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T13-03-17): Enter (commit+advance)
+        and Shift+Tab (commit+retreat) both work. **Esc does NOT revert** — it closes the whole
+        dialog instead of restoring the row's prior text. The reload-persist half was not reached.
+        NOTE: the tester argues Esc *should* close the GUI (fast escape from danger, e.g. bears)
+        rather than revert — this is a spec-design question, not just a bug (see decision surfaced
+        to the user). Retest after the Esc behavior is decided and the persist half is exercised.
+      - **Fix staged (awaiting retest) 2026-07-21:** decision made — Esc **closes the dialog** is
+        the intended behavior (not a bug). Removed the revert interception so Esc bubbles to the
+        base dialog close; blur-commit saves the pending edit on the way out. On retest, confirm
+        Esc closes AND the last edit persisted, and exercise the view-switch + reload persistence
+        half that wasn't reached before. (tasks.md 4.4 / 6.3.)
+- [ ] `2dbcaf33` **(6.4) No focus jump.** Click a row to focus it (the floating input appears),
+      then click away to blur it (the static label returns). Watch the text closely — it should
+      sit at the exact same position, baseline, and size in both states, with no visible jump or
+      shift as the input swaps in and out.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T13-03-17, general/side note):
+        clicking a task row in edit mode makes the text appear to shift slightly — the tester
+        attributes it to the floating input's chrome/border and asks to drop the border in favor
+        of just the subtle background color. This is exactly the "input border bakes in the
+        unclipped pass" bleed the S2 agent flagged as a fallback. Fix: apply the borderless
+        override on `ScribeRowTextInput`, then retest.
+      - **Fix staged (awaiting retest) 2026-07-21:** `ScribeRowTextInput.ComposeTextElements` now
+        skips the base emboss border + dark fill, keeping only the subtle focused-highlight
+        background. On retest, focus/blur a row and confirm the text no longer jumps. (tasks.md 6.9.)
+- [ ] `8f37a2f3` **(6.5) Editor clips and scrolls; widths match.** In editor view, add enough
+      rows to overflow the box. Scroll: rows should slide continuously and clip cleanly at the
+      top/bottom edge (not blink out / pop in fixed spots). Then switch between read and editor
+      view and confirm the row list is the exact same width in both.
+- [ ] `9a2eddd4` **(6.6) Read view still fine.** After all the shared-width and scroll changes,
+      go back to the plain read view and confirm nothing regressed: clicking a task's checkbox
+      toggles it done, the lined-paper ruling draws correctly, and a long list clips/scrolls
+      properly.
+- [ ] `3ed89b7c` **(6.8) Re-click keeps focus + places caret.** Click into an editor row (caret
+      appears), then click that SAME row again: the caret should stay, you can keep typing, and
+      the caret should jump to where you clicked. Then click a DIFFERENT row and confirm focus
+      moves there and the prior row's edit committed.
+      - **Fix staged (awaiting retest) 2026-07-21** (from report 2026-07-21T13-03-17 general note):
+        re-clicking the focused row used to blur it — caret vanished, typing dead, only a
+        different-row click recovered it. Root cause decompile-confirmed (overlapping non-focusable
+        row ate the mouse-down and `GuiComposer.OnMouseDown` blurred the input); fixed by having the
+        focused row yield its text-column mouse-down to the input. This retest confirms the fix.
+
 ## skeuomorphic-lectern-gui
 
 - [x] `9e2c1a30` **(3.5) Scrolling a long list.** Open a lectern and add enough tasks and

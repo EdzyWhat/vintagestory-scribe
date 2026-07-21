@@ -242,6 +242,55 @@ public sealed class ScribeRowElement : GuiElement
             rowTexture.TextureId, Bounds.renderX, Bounds.renderY, Bounds.InnerWidth, Bounds.InnerHeight);
     }
 
+    /// <summary>
+    /// True if <paramref name="args"/> falls on this row's checkbox target. Reconstructs the drawn
+    /// glyph's on-screen rect (matching <see cref="DrawCheckboxGlyph"/>'s math), then expands it by
+    /// <c>ReadCheckboxHitboxScale</c> on BOTH axes so the clickable target is ~20% larger than the
+    /// drawn glyph -- a forgiving target without accepting a click anywhere on a tall note row.
+    /// Clamped to the row bounds so it never leaves the element. Notes (no checkbox) never hit.
+    /// </summary>
+    private bool IsCheckboxHit(MouseEvent args)
+    {
+        if (!isTask || onToggleClicked is null) return false;
+
+        var layout = RowTextLayout.For(Bounds.fixedWidth, isTask, font, config);
+        double colX = Bounds.absX + scaled(layout.CheckboxX);
+        double colSize = scaled(layout.CheckboxSize);
+        double glyphSize = colSize * config.ReadCheckboxGlyphFill;
+        double glyphInset = (colSize - glyphSize) / 2;
+        double glyphX = colX + glyphInset;
+        double glyphY = Bounds.absY + scaled(TopPadFixed(config)) + glyphInset;
+
+        double expand = glyphSize * (config.ReadCheckboxHitboxScale - 1) / 2;
+        double hitLeft = System.Math.Max(Bounds.absX, glyphX - expand);
+        double hitRight = System.Math.Min(Bounds.absX + Bounds.InnerWidth, glyphX + glyphSize + expand);
+        double hitTop = System.Math.Max(Bounds.absY, glyphY - expand);
+        double hitBottom = System.Math.Min(Bounds.absY + Bounds.InnerHeight, glyphY + glyphSize + expand);
+
+        return args.X >= hitLeft && args.X <= hitRight && args.Y >= hitTop && args.Y <= hitBottom;
+    }
+
+    public override void OnMouseDownOnElement(ICoreClientAPI api, MouseEvent args)
+    {
+        // On the focused editor row (suppressText == true, so a floating ScribeRowTextInput is
+        // composed over this row's text column), a click in the text column must FALL THROUGH to
+        // that input rather than be consumed here. The input is added to the composer AFTER this
+        // row, so GuiComposer.OnMouseDown reaches this row first: if this (non-focusable) row
+        // consumes the down, the composer's dispatch loop then BLURS the still-focused input --
+        // the re-click-loses-focus bug (decompile-confirmed; see VSAPI-NOTES). By NOT setting
+        // args.Handled, the down continues to the input, which keeps focus AND places the caret at
+        // the click (GuiElementEditableTextBase.OnMouseDownOnElement -> SetCaretPos). A checkbox
+        // hit on the focused row is still consumed normally (it toggles + recomposes). Every other
+        // row (not yet focused, so no input overlaps) is consumed as before -- its mouse-up asks
+        // the dialog to float the input onto it.
+        if (mode == ScribeRowMode.Edit && suppressText && !IsCheckboxHit(args))
+        {
+            return; // leave args.Handled false: the overlapping input wins this mouse-down
+        }
+
+        base.OnMouseDownOnElement(api, args); // sets args.Handled = true
+    }
+
     public override void OnMouseUpOnElement(ICoreClientAPI api, MouseEvent args)
     {
         base.OnMouseUpOnElement(api, args);
@@ -249,41 +298,21 @@ public sealed class ScribeRowElement : GuiElement
         // The composer only dispatches here when IsPositionInside passes, which already ANDs
         // InsideClipBounds -- so a row scrolled outside the clip region rejects the hit for free.
 
-        // Checkbox (task rows, both views): reconstruct the drawn glyph's on-screen rect (matching
-        // DrawCheckboxGlyph's math), then expand it by ReadCheckboxHitboxScale on BOTH axes so the
-        // clickable target is ~20% larger than the drawn glyph -- a forgiving target (ease-of-use)
-        // without accepting a click anywhere on a tall note row. Clamped to the row bounds so it
-        // never leaves the element.
-        if (isTask && onToggleClicked is not null)
+        // Checkbox (task rows, both views): toggle done.
+        if (IsCheckboxHit(args))
         {
-            var layout = RowTextLayout.For(Bounds.fixedWidth, isTask, font, config);
-            double colX = Bounds.absX + scaled(layout.CheckboxX);
-            double colSize = scaled(layout.CheckboxSize);
-            double glyphSize = colSize * config.ReadCheckboxGlyphFill;
-            double glyphInset = (colSize - glyphSize) / 2;
-            double glyphX = colX + glyphInset;
-            double glyphY = Bounds.absY + scaled(TopPadFixed(config)) + glyphInset;
-
-            double expand = glyphSize * (config.ReadCheckboxHitboxScale - 1) / 2;
-            double hitLeft = System.Math.Max(Bounds.absX, glyphX - expand);
-            double hitRight = System.Math.Min(Bounds.absX + Bounds.InnerWidth, glyphX + glyphSize + expand);
-            double hitTop = System.Math.Max(Bounds.absY, glyphY - expand);
-            double hitBottom = System.Math.Min(Bounds.absY + Bounds.InnerHeight, glyphY + glyphSize + expand);
-
-            if (args.X >= hitLeft && args.X <= hitRight && args.Y >= hitTop && args.Y <= hitBottom)
-            {
-                onToggleClicked(blockIndex);
-                args.Handled = true;
-                return;
-            }
+            onToggleClicked!(blockIndex);
+            args.Handled = true;
+            return;
         }
 
         // Read view: nothing but the checkbox is interactive; a text click is inert.
         if (mode != ScribeRowMode.Edit) return;
 
-        // Editor view: a click anywhere else on the row (the text column) asks the dialog to float
-        // the single live edit input onto this row. The checkbox hit above already returned, so a
-        // fall-through here is a text-area click.
+        // Editor view, text-column click: ask the dialog to float the single live edit input onto
+        // this row. For the ALREADY-focused row this is a no-op (the dialog early-returns and the
+        // input already handled the mouse-down above), so it only does real work when focusing a
+        // different row.
         if (onRequestEdit is not null)
         {
             onRequestEdit(blockIndex);

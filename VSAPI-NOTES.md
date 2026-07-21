@@ -47,6 +47,29 @@ from mod code — defer the recompose yourself to the dialog's own `OnMouseUp` i
 
 ---
 
+**Symptom: a focused text input silently loses focus (caret vanishes, typing stops) when you
+click it again, and only clicking a *different* element restores it.**
+
+This bites when a non-focusable element is registered on the composer *before* an overlapping
+focusable input and consumes the click. `GuiComposer.OnMouseDown` (decompiled) iterates
+`interactiveElements` in insertion order; the first element whose `OnMouseDownOnElement` sets
+`args.Handled = true` becomes "the handler," and the loop then calls `OnFocusLost()` on **every
+other** focusable element that currently `HasFocus`. The default `GuiElement.OnMouseDownOnElement`
+*unconditionally* sets `args.Handled = true`. So a plain overlapping element (added earlier) eats
+the mouse-down and blurs the input behind it; focus is never re-granted because the composer only
+grants focus to the element that *handled* the down (the non-focusable one, `Focusable == false`).
+`OnMouseUp` has no focus logic at all, so a mouse-up handler can't fix it. (This is a distinct
+failure mode from the recompose-focus one above — no recompose is involved.)
+
+**Fix pattern:** the earlier/overlapping element must NOT consume the mouse-down where the input
+should own it — override its `OnMouseDownOnElement` to `return` without calling base (leaving
+`args.Handled` false) for the region the input covers. The down then reaches the input, whose
+`GuiElementEditableTextBase.OnMouseDownOnElement` keeps focus AND places the caret (`SetCaretPos`)
+for free. See `ScribeRowElement.OnMouseDownOnElement` (yields the text column of the focused editor
+row to the floating `ScribeRowTextInput`).
+
+---
+
 **Symptom: `GetTextInput(key)` (or `GetTextArea`) throws `InvalidCastException` on some
 rows but not others.**
 
@@ -583,6 +606,46 @@ NOT factions/territory. `ICoreServerAPI.Groups` → `IGroupManager` (`PlayerGrou
 permitted-group-id set" shape. `BESign` gates editing on `World.Claims.TryAccess(player, Pos,
 EnumBlockAccessFlags.BuildOrBreak)`, not a per-block owner field — Scribe's owner/lock gate layers
 on top of land claims, not instead of them. So group-gated blocks need no third-party mod.
+
+## Icon-button glyphs — custom SVG icons and tinting
+
+**Symptom: an `AddIconButton`/`GuiElementToggleButton` with a made-up icon code (e.g.
+`"scribe:pin"`) renders as an empty button — no glyph, no error, no crash.**
+
+`Vintagestory.API.Client.IconUtil.DrawIconInt(cr, type, …)` (confirmed via `ilspycmd` against
+`/Applications/Vintage Story.app/VintagestoryAPI.dll`, 2026-07-21) does **NOT** fall through to
+`Gui.DrawSvg` for unknown codes — a widely-assumed "escape hatch" that does not exist. It (1)
+looks `type` up in `Dictionary<string, IconRendererDelegate> CustomIcons`, then (2) runs a
+`switch` over the hardcoded built-in glyph names (`plus`, `eraser`, `wpBee`, …). **There is no
+`default` case** — an unrecognized code matches nothing and the method returns having drawn
+nothing, silently.
+
+`GuiElementToggleButton` (the base of Scribe's `ScribeHoverIconButton`) draws its icon by calling
+`api.Gui.Icons.DrawIcon(ctx, icon, …, Font.Color)` each render pass — so it goes through exactly
+this path; there is no separate SVG route for buttons.
+
+**Fix pattern (to use a custom SVG icon):** register it into `CustomIcons` at client init, using
+the helper the class provides:
+```csharp
+capi.Gui.Icons.CustomIcons["scribepin"] =
+    capi.Gui.Icons.SvgIconSource(new AssetLocation("scribe:icons/pin.svg"));
+```
+`IconUtil.SvgIconSource(AssetLocation)` returns an `IconRendererDelegate` that does
+`capi.Assets.TryGet(loc)` then `capi.Gui.DrawSvg(asset, …)`. A wrong/absent asset path fails the
+**same silent way** (`TryGet` → null → delegate draws nothing), so prove one icon's path end-to-
+end before authoring a set. After registration, any button using that code string renders the SVG.
+
+**Tinting:** `DrawIcon` forwards the button's color (`Font.Color` for a toggle button) and the
+interface method is `DrawSvg(IAsset, ImageSurface, int posx, int posy, int width, int height,
+int? color)` — `SvgIconSource` passes `ColorUtil.FromRGBADoubles(rgba)` as that `color`, i.e.
+**the SVG is flood-recolored to the button's single color.** So author custom icon SVGs in one
+flat neutral color (the ink color comes from code, not the file), multi-color glyphs are not
+supported through this path, and per-state hover recolor is free (pass a different `Font.Color`).
+
+**Bonus:** `wpCross` is itself a `CustomIcons` entry (registered in the `IconUtil` ctor) that
+vector-draws a cross via `capi.Gui.Icons.DrawCross(ctx, x, y, 4.0, w)` — a clean X with zero art.
+
+See `docs/specs/scribe-icon-svgs.md` (art + wiring) and `docs/specs/lectern-gui-polish.md` item 8.
 
 ## Entry template
 

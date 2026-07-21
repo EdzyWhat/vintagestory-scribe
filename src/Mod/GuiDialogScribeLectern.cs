@@ -40,10 +40,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// <see cref="EnterMode"/> so entering the editor starts with no row focused.</summary>
     private int? focusedEditIndex;
 
-    /// <summary>The focused row's text as it stood when editing began -- captured on focus so Esc
-    /// can revert the row to it without committing (task 4.4).</summary>
-    private string focusedEditOriginalText = "";
-
     /// <summary>The single live edit input for the current compose, or null when no row is being
     /// edited. Held so the compose tail can seed its value + focus it, and so a recompose can
     /// snapshot its caret before rebuilding. There is only ever ONE (design.md Decision 1's
@@ -652,7 +648,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                     capi, inputBounds, OnEditInputTextChanged, RowFont(),
                     onCommitAndAdvance: OnEditCommitAndAdvance,
                     onCommitAndRetreat: OnEditCommitAndRetreat,
-                    onRevert: OnEditRevert,
                     onBlur: OnEditBlur);
                 SingleComposer.AddInteractiveElement(editInput, "rowEditInput");
                 editInputIndex = i;
@@ -745,10 +740,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         RequestRecompose();
     }
 
-    /// <summary>A row's text column was clicked: float the single live input onto it. Commits the
-    /// previously-focused row first (blur-commit semantics), captures the new row's stored text for
-    /// Esc-revert, then recomposes so the input moves and the newly focused row suppresses its
-    /// label (task 3.2/3.3).</summary>
+    /// <summary>A row's text column was clicked: float the single live input onto it, then recompose
+    /// so the input moves and the newly focused row suppresses its label (task 3.2/3.3). A click on
+    /// the ALREADY-focused row early-returns here -- that row's mouse-down already fell through to
+    /// the overlapping input (see <see cref="ScribeRowElement.OnMouseDownOnElement"/>), which kept
+    /// focus and placed the caret, so there is nothing to do.</summary>
     private void OnRequestEditRow(int index)
     {
         if (focusedEditIndex == index) return;
@@ -758,9 +754,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         FlushIfDirty();
 
         focusedEditIndex = index;
-        focusedEditOriginalText = scratchDocument is not null && index >= 0 && index < scratchDocument.Blocks.Count
-            ? scratchDocument.Blocks[index].Text
-            : "";
 
         // Deferred recompose: this fires from inside the row element's OnMouseUpOnElement, which
         // runs during GuiComposer's mouse dispatch loop -- same mid-dispatch hazard as every other
@@ -800,20 +793,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         return true;
     }
 
-    /// <summary>Esc: revert the focused row to its stored text without committing (task 4.4). The
-    /// revert IS a change to the scratch document (it undoes the in-progress edit), so it is marked
-    /// dirty and will persist -- "no commit" means Esc itself doesn't force a flush, not that the
-    /// reverted value is discarded. Stays focused on the same row.</summary>
-    private bool OnEditRevert()
-    {
-        if (focusedEditIndex is not { } index || scratchDocument is null) return false;
-
-        scratchDocument.SetBlockText(index, focusedEditOriginalText);
-        isDirty = true;
-        editInput?.SetValue(focusedEditOriginalText);
-        return true;
-    }
-
     /// <summary>Blur (genuine click-away, not a recompose-driven focus loss): commit the row's edit
     /// (task 4.3). Skipped during a programmatic recompose focus transfer, where the caller already
     /// flushed.</summary>
@@ -824,13 +803,10 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     }
 
     /// <summary>Moves the in-place edit focus to <paramref name="index"/> and recomposes so the
-    /// single input repositions onto that row. Captures the new row's stored text for Esc-revert.</summary>
+    /// single input repositions onto that row.</summary>
     private void MoveEditFocusTo(int index)
     {
         focusedEditIndex = index;
-        focusedEditOriginalText = scratchDocument is not null && index >= 0 && index < scratchDocument.Blocks.Count
-            ? scratchDocument.Blocks[index].Text
-            : "";
         RequestRecompose();
     }
 
@@ -874,7 +850,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         isDirty = true;
         // Focus the newly added row so the player can immediately type over the placeholder.
         focusedEditIndex = scratchDocument.Blocks.Count - 1;
-        focusedEditOriginalText = Lang.Get("scribe:scribe-gui-newtask-placeholder");
         RequestRecompose();
         return true;
     }

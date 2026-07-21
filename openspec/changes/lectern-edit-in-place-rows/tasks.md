@@ -39,7 +39,13 @@
       `ScribeEditDocumentMessage` → `ApplyEdit`, then move focus to the next row.
 - [x] 4.2 On Shift+Tab: commit the focused row, then move focus to the previous row.
 - [x] 4.3 On blur (focus lost without Enter/Shift+Tab): commit the focused row's text.
-- [x] 4.4 On Esc: revert the focused row to its stored `block.Text` without committing.
+- [x] 4.4 On Esc: **close the dialog** (do NOT revert in place). *(Decision reversed 2026-07-21
+      after playtest 2026-07-21T13-03-17: the tester wants Esc to be a fast panic-close — "bears
+      are a killer, we need to leave windows fast" — and reported the built revert-in-place felt
+      wrong.)* Blur-commit already fires on close, so the focused row's pending edit is saved on
+      the way out — Esc is a commit-and-close, not a discard. Remove the `onRevert` interception
+      from `ScribeRowTextInput.OnKeyDown` so Esc bubbles to the base dialog close; drop `OnEditRevert`
+      / `focusedEditOriginalText` revert plumbing. In-place revert is dropped (no key rebinding).
 
 ## 5. Unify width, remove seed, tolerate legacy config
 
@@ -57,13 +63,31 @@
       line ends, Alt/Option+Arrow skips by word, Shift extends selection during each — and none
       of these insert stray characters.
 - [ ] 6.3 Manually test in-game: Enter commits + advances, Shift+Tab commits + retreats, Esc
-      reverts, clicking away commits; edits persist across a view switch and reload.
+      commits-and-closes the dialog (per the 2026-07-21 decision, NOT revert), clicking away
+      commits; edits persist across a view switch and reload.
 - [ ] 6.4 Manually test in-game: focusing/blurring a row shows no baseline/position/size jump
       between the static label and the floating input.
 - [ ] 6.5 Manually test in-game: editor rows clip (not pop) at the scroll boundary and scroll
       continuously; read and editor views are the same row-list width.
 - [ ] 6.6 Confirm no regression to the read view (checkbox toggle, ruling, clipping) after the
       shared-width and scroll-path changes.
+
+### Playtest follow-up fixes (from report 2026-07-21T13-03-17)
+
+- [x] 6.7 **Re-click loses focus (fixed).** Clicking the already-focused editor row blurred its
+      input and typing died (only a different-row click recovered it). Root cause (decompile-
+      confirmed): the overlapping `ScribeRowElement` — added to the composer before the floating
+      input — consumed the mouse-down, and `GuiComposer.OnMouseDown` then blurred the still-focused
+      input. Fixed in `ScribeRowElement.OnMouseDownOnElement`: the focused row (`suppressText`)
+      yields its text-column mouse-down to the input (no `args.Handled`), so the input keeps focus
+      AND places the caret at the click. Recorded in VSAPI-NOTES.md. **Retest in-game (6.8).**
+- [ ] 6.8 Manually test in-game: click into an editor row, then click it AGAIN — the caret stays,
+      you can keep typing, and the caret moves to where you clicked (click-to-place). Confirm a
+      different-row click still moves focus + commits the prior row.
+- [x] 6.9 **Input border removed (fixed).** The floating input's baked emboss border read as the
+      text "jumping" on focus (tester's side note). `ScribeRowTextInput.ComposeTextElements` now
+      skips the emboss + dark fill, keeping only the subtle focused-highlight background. **Retest
+      via 6.4** (the no-jump item this was failing).
 
 ## 7. Close out
 

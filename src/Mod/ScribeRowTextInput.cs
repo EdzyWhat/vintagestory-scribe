@@ -1,4 +1,5 @@
 using System;
+using Cairo;
 using Vintagestory.API.Client;
 
 namespace Scribe;
@@ -21,9 +22,18 @@ namespace Scribe;
 ///     (<c>MoveCursor(dir, wholeWord: true)</c>) runs instead of the Alt early-return.</item>
 /// </list>
 /// <c>ShiftPressed</c> is left untouched on the rewritten event, so the base's shift-extend-select
-/// keeps working for every one of these. Enter / Shift+Tab / Esc are intercepted <i>before</i>
-/// delegating and surfaced to the dialog via callbacks (row navigation and revert are inherently
-/// cross-element, so they belong to the dialog, not this element).
+/// keeps working for every one of these. Enter / Shift+Tab are intercepted <i>before</i> delegating
+/// and surfaced to the dialog via callbacks (row navigation is inherently cross-element, so it
+/// belongs to the dialog, not this element). <b>Esc is deliberately NOT intercepted</b> -- it falls
+/// through to the base, whose <c>OnKeyDownInternal</c> leaves KeyCode 50 unhandled, so it bubbles up
+/// and closes the whole dialog. That is the wanted "panic-close" behavior (decided 2026-07-21 after
+/// playtest: a fast exit matters more than an in-place revert). Blur-commit fires on close, so the
+/// focused row's pending edit is saved on the way out -- Esc is a commit-and-close, not a discard.
+///
+/// This subclass also <b>drops the base input's embossed border</b> (<see cref="ComposeTextElements"/>):
+/// the row is drawn by <see cref="ScribeRowElement"/>'s lined-paper look, and a boxed input border
+/// over one row read as the text "jumping" on focus (playtest 2026-07-21). Only the subtle focused
+/// highlight background remains.
 /// </summary>
 public sealed class ScribeRowTextInput : GuiElementTextInput
 {
@@ -32,7 +42,8 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     private const int KeyLeft = 47;
     private const int KeyRight = 48;
     private const int KeyEnter = 49;
-    private const int KeyEscape = 50;
+    // Escape (50) is intentionally not referenced: we let it fall through to the base so it
+    // bubbles up and closes the dialog (panic-close, decided 2026-07-21).
     private const int KeyTab = 52;
     private const int KeyHome = 58;
     private const int KeyEnd = 59;
@@ -45,10 +56,7 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     /// <summary>Shift+Tab pressed: commit + retreat to the previous row.</summary>
     private readonly Func<bool> onCommitAndRetreat;
 
-    /// <summary>Escape pressed: revert this row to its last stored text (no commit).</summary>
-    private readonly Func<bool> onRevert;
-
-    /// <summary>Focus lost without an Enter/Shift+Tab/Esc (e.g. the player clicked away): commit
+    /// <summary>Focus lost without an Enter/Shift+Tab (e.g. the player clicked away): commit
     /// the row's edit. May be null when the dialog does not need a blur hook.</summary>
     private readonly Action? onBlur;
 
@@ -59,14 +67,42 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
         CairoFont font,
         Func<bool> onCommitAndAdvance,
         Func<bool> onCommitAndRetreat,
-        Func<bool> onRevert,
         Action? onBlur = null)
         : base(capi, bounds, onTextChanged, font)
     {
         this.onCommitAndAdvance = onCommitAndAdvance;
         this.onCommitAndRetreat = onCommitAndRetreat;
-        this.onRevert = onRevert;
         this.onBlur = onBlur;
+    }
+
+    /// <summary>
+    /// Skips the base <see cref="GuiElementTextInput.ComposeTextElements"/>' embossed border + dark
+    /// fill so the floating input has no visible box -- only the focused-highlight background (drawn
+    /// separately in <c>RenderInteractiveElements</c> from <c>highlightTexture</c>) remains. The base
+    /// builds the highlight texture here and ends by calling the internal <c>RecomposeText</c>; we
+    /// can't call that internal from this assembly, but the dialog always calls <c>SetValue</c> on
+    /// this input right after Compose (GuiDialogScribeLectern compose tail), and <c>SetValue</c> ->
+    /// <c>LoadValue</c> -> <c>TextChanged</c> -> <c>RecomposeText</c> rebuilds the text texture -- so
+    /// the glyphs still render. We reproduce only the highlight-texture build from the base.
+    /// </summary>
+    public override void ComposeTextElements(Context ctx, ImageSurface surface)
+    {
+        // Build the focused-highlight texture exactly as the base does (a faint translucent white
+        // fill shown only while HasFocus), but omit the base's EmbossRoundRectangleElement + the
+        // dark ElementRoundRectangle fill that together drew the boxed border.
+        var highlightSurface = new ImageSurface(Format.Argb32, (int)Bounds.OuterWidth, (int)Bounds.OuterHeight);
+        Context highlightCtx = genContext(highlightSurface);
+        highlightCtx.SetSourceRGBA(1.0, 1.0, 1.0, 0.2);
+        highlightCtx.Paint();
+        generateTexture(highlightSurface, ref highlightTexture);
+        highlightCtx.Dispose();
+        highlightSurface.Dispose();
+
+        highlightBounds = Bounds.CopyOffsetedSibling().WithFixedPadding(0.0, 0.0)
+            .FixedGrow(2.0 * Bounds.absPaddingX, 2.0 * Bounds.absPaddingY);
+        highlightBounds.CalcWorldBounds();
+        // NOTE: base ends with RecomposeText() here; we rely on the dialog's post-Compose SetValue
+        // to trigger it (see summary). If that call is ever removed, the input would render blank.
     }
 
     public override void OnFocusLost()
@@ -106,15 +142,9 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
             }
         }
 
-        // Escape reverts. (Left unhandled by default, which would bubble up and close the dialog.)
-        if (args.KeyCode == KeyEscape)
-        {
-            if (onRevert())
-            {
-                args.Handled = true;
-                return;
-            }
-        }
+        // Escape is deliberately NOT handled here: the base leaves KeyCode 50 unhandled, so it
+        // bubbles up and closes the dialog (the wanted panic-close -- decided 2026-07-21). Blur on
+        // close still commits the pending edit, so nothing typed is lost.
 
         // ---- Mac caret-convention translation, then delegate to the base ----
         base.OnKeyDown(api, TranslateMacCaretModifiers(args));
