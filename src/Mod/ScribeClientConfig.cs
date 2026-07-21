@@ -23,9 +23,14 @@ public sealed class ScribeClientConfig
     /// just while tuning layout.</summary>
     public float TextSizeScale = 1f;
 
+    /// <summary>Lower bound for the text-size slider, in percent. Mirrors
+    /// <see cref="MaxTextSizePercent"/> so the low end is tunable rather than hardcoded (the
+    /// slider's floor and the constructor's clamp both read this).</summary>
+    public int MinTextSizePercent = 20;
+
     /// <summary>Upper bound for the text-size slider, in percent. A loose sanity bound now that
     /// the row list scrolls to handle overflow, not a tight guard against it.</summary>
-    public int MaxTextSizePercent = 300;
+    public int MaxTextSizePercent = 120;
 
     // ---------------- Row-list viewport ----------------
 

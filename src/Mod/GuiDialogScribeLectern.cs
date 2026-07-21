@@ -58,9 +58,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         this.lectern = lectern;
         this.clientConfig = capi.LoadModConfig<ScribeClientConfig>(ScribeModSystem.ClientConfigFileName) ?? new ScribeClientConfig();
 
-        // Clamp a pre-existing saved value down to the current cap -- a config saved before
-        // MaxTextSizePercent was introduced (or before it was lowered) could exceed it.
-        clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, 0.5f, clientConfig.MaxTextSizePercent / 100f);
+        // Clamp a pre-existing saved value into the current range -- a config saved before
+        // these bounds were introduced (or before they were changed) could fall outside them.
+        clientConfig.TextSizeScale = System.Math.Clamp(clientConfig.TextSizeScale, clientConfig.MinTextSizePercent / 100f, clientConfig.MaxTextSizePercent / 100f);
 
         if (IsDuplicate) return;
 
@@ -692,7 +692,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         SingleComposer.AddStaticText(Lang.Get("scribe:scribe-gui-textsize"), CairoFont.WhiteSmallText(), ElementBounds.Fixed(0, y, clientConfig.TextSizeLabelWidth, clientConfig.ControlRowHeight));
         double sliderX = clientConfig.TextSizeLabelWidth + clientConfig.TextSizeLabelToSliderGap;
         SingleComposer.AddSlider(OnTextSizeSliderChanged, ElementBounds.Fixed(sliderX, y, listWidth - sliderX, clientConfig.ControlRowHeight), key: "textSizeSlider");
-        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, 50, clientConfig.MaxTextSizePercent, 10, "%");
+        SingleComposer.GetSlider("textSizeSlider").SetValues(TextSizePercent, clientConfig.MinTextSizePercent, clientConfig.MaxTextSizePercent, 10, "%");
         y += clientConfig.ControlRowGap;
 
         var toolPanelToggleBounds = ElementBounds.Fixed(0, y, clientConfig.ToolPanelToggleWidth, clientConfig.ControlRowHeight);

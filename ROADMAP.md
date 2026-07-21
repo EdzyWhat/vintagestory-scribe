@@ -94,11 +94,12 @@ age (the saw); anything past that is cosmetic.
   currently in use across the lectern GUI (drag handle, pin, delete, add-task, collapse,
   switch-view), and ask whether any should change. Distinct from a code task — mostly a
   presentation/decision session that may produce small follow-up icon-swap tasks.
-- **Configurable text-size minimum.** `ScribeClientConfig.MaxTextSizePercent` already
-  caps the upper end of the text-size slider; from playtesting feedback (2026-07-19), add
-  a matching minimum (e.g. down to 20%) so the lower end is also tunable rather than
-  hardcoded at the slider's current floor. Small, low-risk — bundle with a config-pass
-  change rather than a dedicated one.
+- **~~Configurable text-size minimum~~ — done 2026-07-20.** Added
+  `ScribeClientConfig.MinTextSizePercent` (default 20) mirroring `MaxTextSizePercent`; both
+  the constructor clamp and the slider's floor now read it instead of the old hardcoded 50%.
+  Per playtesting feedback the default range was retuned to 20%–120% (`MaxTextSizePercent`
+  lowered from 300 to 120) since the user wanted smaller fonts, not larger; both bounds stay
+  editable in `scribe-client-config.json`.
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
 - Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
