@@ -3,6 +3,11 @@
 Scribe grows one tier at a time. Each tier becomes one or more **OpenSpec changes**
 (`openspec/changes/`) when we reach it; this file is the high-level map.
 
+Detailed architect-level implementation specs for the tiers and feature clusters below now
+live in **`docs/specs/`** (written 2026-07-21). Each links its VS API hooks, C# data
+structures, and sequencing. When a tier is picked up, its spec is the input to an
+`openspec-propose`. This file stays the map; the specs hold the "how."
+
 The progression axis is **less access friction**: early tools are clunky handheld
 objects; late tools make your tasks ambient. It's grounded in the archaeology of
 writing *and* vanilla mechanics (you write *into* clay with a stylus — stone age;
@@ -21,295 +26,151 @@ age (the saw); anything past that is cosmetic.
 ## Staged plan
 
 - **v1 — Lectern slice** *(current)*: one lectern block (reuses the vanilla
-  "lecturn-book-open" shape — plain wood, not an "aged" scavenged variant) with a task
-  checklist + short note, server-authoritative and multiplayer-safe. Goal: something
-  playable to test. Built modularly so later tiers slot in without rework.
-- **v2 — Notebook (collection):** leather-bound held item, infinite pages. First held
-  artifact → introduces the `docId`-on-item store the clay tablet later reuses. Two
-  decisions carried over from v1 exploration:
-  - **A real scrollable/clipped GUI region is a hard prerequisite, not a follow-up.**
-    `add-lectern-block` task 8.15 (rows stacked by absolute Y, no scrollbar, currently
-    just stopgapped via a text-size cap) must land before "infinite pages" can be an
-    honest claim — otherwise content silently renders off-screen past a certain length,
-    which is worse than v1's bounded-document problem.
-  - **The single-editor lock (server-tracked by block position) likely does not carry
-    over.** A held item has no fixed position, and only one player can ever hold a given
-    item stack at a time — the contention the lock exists to prevent may not apply to a
-    docId-keyed held document. Confirm this explicitly when scoping v2 rather than
-    copy-pasting the lock pattern out of habit.
-- **v3 — Clay tablet (scratch):** soft/unfired item, clay-color-tinted 3-line UI,
-  clayform-a-flat-slab (no firing), stylus in offhand, wets out in water, storable in
-  the vanilla Vertical Rack. Plain text entry for now.
-- **v4 — Writing desk (organization):** private owner-gated block; consolidates all
-  note-items + categories. **Idea (2026-07-20): full kanban in the desk's notebook UI** —
-  Active / Backlog / Completed sections (columns or tabs). This is the richer home for the
-  "funnel completed tasks into a separate view" idea (see the Parked feature note below): at
-  the desk tier, "completed" becomes one column of a proper board rather than a lectern toggle.
-  Move-between-columns interaction to be designed; reuses the row-list-rework shared renderer.
-- **v5 — Backpack (portability):** hotkey-accessed; pinned-task HUD (≤3 pins).
-- **v6 — Bulletin board (social):** public shared block + drawable chalkboard variant.
+  "lecturn-book-open" shape — plain wood) with a task checklist + short note,
+  server-authoritative and multiplayer-safe. Built modularly so later tiers slot in. The
+  **row-list rework** (S1 shipped, S2 = `lectern-edit-in-place-rows` proposed) is finishing
+  the GUI onto a single custom-drawn row element — this is a hard prerequisite for the held
+  tiers below (a real clipped/scrollable region + a unified read/edit renderer).
+- **v2 — Notebook (collection)** → `docs/specs/v2-notebook.md`. Leather-bound held item,
+  infinite pages. Introduces the **`docId`-on-item + server-side document store** that v3
+  reuses. Two carried-over decisions are now **resolved** in the spec: the scroll/clip
+  prerequisite is delivered by the row-list rework (v2 must wait for **S2**); and the
+  single-editor lock does **not** carry over (a held stack has one holder — matches vanilla
+  `ItemBook`, which uses no lock).
+- **v3 — Clay tablet (scratch)** → `docs/specs/v3-clay-tablet.md`. Soft/unfired item, 3-line
+  UI, clayform-a-flat-slab, stylus in offhand, wets out in water, rack-storable. Mostly JSON
+  (clayforming pattern, `dissolveInWater`, `scrollrackable`, stylus = `writingTool` item). The
+  fire-to-permanent-archive trade-off has a real gotcha (kiln firing drops stack attributes —
+  see the spec and VSAPI-NOTES).
+- **v4 — Writing desk (organization)** → `docs/specs/v4-writing-desk.md`. Private owner-gated
+  block; consolidates notes + categories; **kanban tabs** (Active / Backlog / Completed) as
+  the fuller home for the completed-task funnel. Also the home for the **faction/shared
+  task-assignment** idea — VS ships a first-party player-group system, so this may need no
+  external dependency (see open decision below).
+- **v5 — Backpack (portability)** → `docs/specs/v5-backpack-hud.md`. Hotkey-accessed;
+  always-on **pinned-task HUD** (≤3 pins, native `HudElement` — not ImGui); plus a
+  **quick-add hotkey** for one-line capture without opening the full document.
+- **v6 — Bulletin board (social)** → `docs/specs/v6-bulletin-board.md`. Public shared block +
+  signatures + a guestbook (append-only) variant. The **drawable chalkboard** is recommended
+  as a v6.1 sub-change (no vanilla drawable precedent → from-scratch stroke GUI).
 
-### Parked (later)
+## Near-term, actionable (not tied to a future tier)
 
-- **BUG — editor view doesn't auto-close on walk-away.** From playtesting (2026-07-21,
-  TESTING.md item `9c04c5c7` / add-lectern-block 7.8): opening the editor and walking hundreds
-  of blocks away never closes the dialog. Expected (and specced): leaving interaction range
-  auto-closes the GUI and force-flushes the pending edit (see add-lectern-block task 7.8 and the
-  "walk-away flush" autosave behavior). The range-check-and-close appears not to fire; the flush
-  half couldn't even be reached in testing. Needs a code fix in the lectern dialog's
-  proximity/close handling, then a retest of both the close and the flush. Not row-list-rework
-  scope — a distinct defect in the existing dialog lifecycle.
-- Stamping mechanic for the clay tablet (custom UI + animation + sound — a large,
-  standalone effort).
-- Paper progression (reed/papyrus → parchment).
-- Location-tagged entries.
-- **~~Optional in-game settings panel (ConfigLib, soft dependency)~~ — adopted
-  2026-07-19** (`add-imgui-configlib-tuning`): `src/Mod/assets/scribe/config/
-  configlib-patches.json` exposes seven `ScribeClientConfig` layout fields
-  (`VisibleListHeight`, `RowSpacing`, `TopContentGap`, `ReadListWidth`, `EditorListWidth`,
-  `RowDividerThickness`, `RowDividerBrightness`) via the manifest's `"file"` key, which
-  reads/writes the existing config file directly — confirmed by decompiling the actually
-  installed `configlib_1.12.0.zip` (`ConfigLibModSystem.LoadConfig`), not just the public
-  wiki, since the wiki's own JSON-API page doesn't document the `"file"`-key path at all
-  (only the asset-patching path). **Correction to this entry's original research: no
-  usable NuGet package exists for ConfigLib** — referenced instead via a `HintPath`
-  against the DLL vendored from the installed mod `.zip` (`src/Mod/lib/`, see its
-  README). Confirmed hard-depends on `vsimgui`, as originally noted.
-- **~~ImGui mod (mods.vintagestory.at/imgui) — for live GUI-layout tuning~~ — adopted
-  2026-07-19** (`add-imgui-configlib-tuning`): `GuiDialogScribeLectern`'s `#if
-  DEBUG`-gated `RegisterDebugSliders()` binds the same seven layout fields via
-  `VSImGui.Debug.DebugWidgets.FloatSlider`, letting a developer drag a slider and see the
-  dialog recompose live. **Correction to this entry's original research**: no forced
-  per-frame recompose is needed — `DebugWidgets` entries are drawn automatically by
-  VSImGui's own always-on debug-window handler (`ImGuiModSystem`'s `Draw` event, confirmed
-  via decompiling the installed `vsimgui_1.2.7.zip`, not the published (stale, net7.0)
-  NuGet package). Excluded from Release builds via a `Configuration == 'Debug'` Condition
-  on `Mod.csproj`'s VSImGui `<Reference>` `ItemGroup`, not just `#if DEBUG` at call
-  sites — confirmed via build output inspection that no VSImGui/ImGui DLL reaches
-  `bin/Release/`.
-- **ToastLib (mods.vintagestory.at/toastlib) — investigated as a possible base for the v5
-  pinned-task HUD, rejected.** Researched 2026-07-19: stale for 1.22.x (targets
-  1.21.1–1.21.5), hard-depends on ImGui, and its API/lifecycle (`ShowToastAdv`, slide-in/
-  out, auto-dismiss) is purpose-built for transient messages with no "persist and update
-  every tick" primitive — not a fit for an always-on HUD. If/when the v5 HUD gets built,
-  go straight to ImGui rather than through this.
-- **Custom checkbox visual with stamp/erase animation + sound.** From playtesting
-  feedback (2026-07-19): replace the plain checkbox with a custom visual that scales
-  with text size (building on the checkbox-scaling fix already shipped), plus a
-  satisfying "stamp" animation and sound on check, an "eraser" sound on uncheck, both
-  with randomized variations so repeated use doesn't feel mechanical. Purely
-  presentational reward-for-completion polish — no data-model changes. Needs actual art/
-  audio assets, not just code, so this waits until closer to a polish pass rather than
-  competing with core-tier work.
-- **Smooth drag-reorder animation.** From playtesting feedback (2026-07-20): the editor's
-  drag-to-reorder works but only moves rows on drop — the list stays static while dragging.
-  Many reorder UIs animate the other rows spreading/shifting to preview where the dragged
-  row will land, giving live feedback. Purely presentational; the `MoveBlock` model and
-  hit-testing already work. Non-trivial GUI work (rows are composed at fixed Y per frame,
-  so a live preview means offsetting the non-dragged rows' composed Y around the current
-  hover target and recomposing as the target changes) — a polish-pass item, not core-tier.
-- **Funnel completed tasks into a separate "Done" view.** From ideation (2026-07-20): rather
-  than just sorting completed tasks toward the bottom (see the "Sort completed tasks toward the
-  bottom" UX note below), optionally remove them from the read/edit row lists entirely and
-  surface them in a dedicated third view of completed tasks. The "hide completed from the
-  read/edit views" behavior should be a toggle exposed only in the editor view's options
-  component (not the read view). Depends on the unified custom-drawn row list (row-list-rework)
-  landing first, since a third view should reuse the same shared row renderer; also interacts
-  with the read/edit view unification. Likely its own OpenSpec change after the rework stages.
-  A data-model question to resolve first: is "done" enough to drive this, or does funneling
-  imply a separate completed-collection the way archiving would? See also the v4 writing-desk
-  kanban idea above — the desk tier may be the fuller home for this (Active/Backlog/Completed
-  columns), with the lectern getting only the lighter hide-completed toggle.
-- **Partial-row visibility at the scroll boundary (cull → clip).** From playtesting feedback
-  (2026-07-20, two screenshots one wheel-tick apart): a row at the top/bottom edge pops
-  fully in/out rather than being partially revealed/hidden as you scroll. This is the direct,
-  known consequence of the cull-don't-clip design (design.md Decision 4): since the engine's
-  scissor doesn't actually clip this row list's rendering, a row is only composed once it's
-  *fully* inside the visible window, so it can't be shown half-hidden. Making a row render
-  partially would require real pixel clipping of a composed row, which was confirmed
-  unavailable for this mixed static+interactive list (would mean reimplementing text-input/
-  checkbox rendering to draw per-frame like `GuiElementFlatList`, a large rewrite — see
-  design.md's rejected Handbook-architecture investigation). Parked as a known limitation
-  with a real but expensive fix; revisit only if the pop-in reads as jarring in practice.
-- **Icon-font audit session.** From playtesting feedback (2026-07-19): a dedicated
-  session to open the engine's built-in icon-font options for the user, list every icon
-  currently in use across the lectern GUI (drag handle, pin, delete, add-task, collapse,
-  switch-view), and ask whether any should change. Distinct from a code task — mostly a
-  presentation/decision session that may produce small follow-up icon-swap tasks.
-- **~~Configurable text-size minimum~~ — done 2026-07-20.** Added
-  `ScribeClientConfig.MinTextSizePercent` (default 20) mirroring `MaxTextSizePercent`; both
-  the constructor clamp and the slider's floor now read it instead of the old hardcoded 50%.
-  Per playtesting feedback the default range was retuned to 20%–120% (`MaxTextSizePercent`
-  lowered from 300 to 120) since the user wanted smaller fonts, not larger; both bounds stay
-  editable in `scribe-client-config.json`.
-- **Lectern faces a fixed direction when placed; should face the placing player.** From
-  playtesting (2026-07-21): the block always places in the same orientation regardless of which
-  way the player faces, so the book can end up facing away. Expected (and standard for the
-  vanilla lectern): orient on placement so the book faces the player, i.e. derive the block's
-  horizontal facing from the player's yaw in `OnBlockInteractStart`/placement (vanilla blocks do
-  this via a `horizontalorientation` variant group + `BlockBehaviorHorizontalOrientable`, or by
-  setting the placed block's facing from `byPlayer`'s look direction). Small block-definition/
-  placement change in `BlockScribeLectern`; check how the vanilla `Block` "aged book lectern"
-  clutter shape handles orientation before inventing one.
-- **Relabel the editor's "Edit" button to "Edit Tasks."** From playtesting (2026-07-19): the
-  bare "Edit" reads ambiguously; "Edit Tasks" is clearer about what the mode does. Trivial lang
-  string change (`scribe:scribe-gui-switch-to-editor` or its label).
-- **Narrower icon columns at large text size.** From playtesting (2026-07-19): when text size is
-  cranked up, the drag / pin / delete icon columns feel like they take too much horizontal space
-  relative to the text. Consider scaling those gutter widths sub-linearly with text size (or
-  capping them) rather than the current straight `* TextSizeScale`. Fits naturally into the
-  row-list rework, since S2 revisits the editor row layout anyway.
-- Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
-  so the model reads as "editing the paper here" rather than managing/taking a book.
-- Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
-  reserved for a future item/recipe, not the lectern — the lectern's "Add Note" toolbar
-  button was removed deliberately (task 8.18 in `add-lectern-block`); the Core capability
-  and `ScribeBlockRowCell`'s rendering of text-section rows are kept fully working so that
-  future recipe can reuse them with no Core changes.
-- ~~Replace the dynamically-sized GUI rows with a static-sized, skeuomorphic open-book UI
-  (fixed page layout, turn-page paging instead of a growing scroll list)~~ — superseded by
-  `skeuomorphic-lectern-gui`: delivered a custom-drawn (placeholder-art) backdrop and a
-  portrait reshape, but explicitly rejected pagination in favor of a continuous scrollable
-  region (design.md decision 4) — the document model's per-row dynamic height and
-  drag-reorder made pagination's cost not worth it. See
-  https://mods.vintagestory.at/show/mod/42149 for the prior-art reference that motivated
-  the backdrop mechanism, still relevant for future real per-tier art.
-- Move the editor's option bar (text-size slider, collapse toggle, add-task/add-note, the
-  read/edit mode switch button) off the main content area entirely, into a side rail --
-  similar to how the vanilla Survival Handbook keeps its category tabs docked to the side of
-  the main content pane rather than stacked above/below it. Saves vertical space that
-  currently competes with the document's own rows, and groups all chrome in one place.
-- Fold the "Switch to Read/Edit" button into the collapse/expand toggle itself (or otherwise
-  merge them) to save a row of screen space, once the side-rail move above makes that layout
-  decision concrete.
-- Cross-world export/import (JSON), à la Wanderer's Sketchbook / Frontier's Map.
-- Handbook/wiki authoring pass (guides players through the tiers; documents which features
-  live on which item/block). Spans all tiers; do near shipping.
-- Credit JeanPierre (Wanderer's Sketchbook) in CREDITS — we borrow its data model + GUI ideas.
-- Skeuomorphic collapse/expand control: explore making the edit-options toggle a bookmark,
-  ribbon, or similar tactile element instead of a plain button (fits the writing-GUI panel).
-- Custom fonts via open-source/licensed font faces: **cuneiform-style block letters** for
-  the clay tablet's stamped text, and a **rustic/hand-written script** for books/notebooks.
-  Purely presentational (render-time font swap per tier); verify license terms allow
-  bundling before picking a specific font.
-- Localization (`lang/` files beyond `en.json`) for all player-facing GUI text and item/block
-  names, so the mod is translatable. Worth setting up the `lang` key structure early (v1) even
-  if only English is authored at first, so later strings don't need retrofitting.
+- **BUG — editor view doesn't auto-close on walk-away.** Playtest 2026-07-21 (TESTING.md
+  `9c04c5c7` / add-lectern-block 7.8): opening the editor and walking hundreds of blocks away
+  never closes the dialog; expected behavior is auto-close + force-flush the pending edit. The
+  range-check-and-close appears not to fire. A distinct defect in the existing dialog
+  lifecycle — not row-list-rework scope. Needs a code fix, then a retest of close + flush.
+- **Lectern GUI polish** → `docs/specs/lectern-gui-polish.md`. Merges: face-the-player on
+  placement, "Edit" → "Edit Tasks" relabel, damped icon-gutter widths at large text size,
+  the side-rail option bar + fold-switch-into-toggle + skeuomorphic collapse control chain,
+  the loose-leaf-paper model swap, and the icon-font audit. The relabel and the placement
+  facing are **trivial and have zero row-list-rework dependency** — candidates to pull out as
+  a quick standalone change now (see open decision). The gutter-width item rides S2.
 
-### Immersion ideas (curated — see project plan Reference for the full brainstorm)
+## Presentation & polish (deferred, mostly asset-gated)
 
-Grounded, distinctive, and reasonably cheap ideas worth tracking. Ranked roughly by how
-directly they connect archaeology/history to actual gameplay (not just flavor):
+→ `docs/specs/presentation-and-fonts.md`. Merges the checkbox stamp/erase animation
+(this is **S4** of the row-list rework — the seam already exists in
+`ScribeRowElement.DrawCheckboxGlyph`), the smooth drag-reorder preview animation (**S3**;
+supersedes the on-hold `lectern-drag-reorder-feedback` change's "rows don't shift" non-goal),
+custom per-tier fonts (cuneiform for the tablet, rustic script for books — loadable via
+FreeType, gated on a license check), and lightly-scoped handwriting-skill / item-aging visuals.
+All render-only; several need art/audio assets before they can start.
 
-- **Firing a tablet is a real crafting decision, not just lore.** A completed soft tablet
-  can be fired in a kiln to become a **permanent, read-only, indestructible archive** —
-  versus staying soft/editable but forever water-fragile. Mirrors the real reason ancient
-  tablets survive (accidental/deliberate firing, often in building fires). The single most
-  historically-grounded mechanic on this list — a genuine tier trade-off, not a strict
-  upgrade.
-- **Fire vs. water asymmetric fragility across tiers.** Clay is fireproof but water-fragile
-  (already planned); paper/leather should be the inverse — fire-fragile, more water-resistant.
-  Keeps later tiers from being strictly "better," which is more interesting design.
-- **Death leaves a last entry.** On player death, auto-append a timestamped/located final
-  entry to the player's current document. Combined with normal VS item-drop-on-death, this
-  turns a dropped notebook into a real in-fiction artifact someone else might find at your
-  gravesite. No other VS mod appears to do this — a distinctive hook.
-- **Calendar-stamped entries + passive chronicle-building.** Auto-timestamp entries with
-  VS's real in-game calendar (seasons/days); auto-log recurring world events (e.g. "survived
-  a temporal storm on Day X"); auto-archive completed task lists into a read-only section
-  instead of discarding them. All three are cheap and combine into a "journal of your
-  journey" that writes itself over a long playthrough.
-- **Signed vs. unsigned notes.** Since server-authoritative writes already know the
-  player's identity at write time, optionally persist and display it as a signature on
-  shared/board notes — attributed vs. anonymous, cheap to add.
-- **Guestbook variant of the bulletin board.** A thin, append-only, signed-entry log
-  ("visited on day X") distinct from the task-oriented board — cheap once the board's
-  shared-doc infrastructure exists.
-- **Wax-seal "soft security"** for private documents/notes — tamper is *possible* but
-  leaves evidence, rather than a hard lock. Fits VS's grounded-realism ethos better than an
-  unbreakable lock. **Decided: pursue only if it's a cheap interop** with the existing
-  **Envelopes** mod (github.com/SiiMeR/vs-envelopes); otherwise skip or build native later.
-  Not urgent.
-- **Milestone-suggested tasks — decided: self-detect, no dependency.** When the player
-  crosses a tech milestone (e.g. first bronze smelt), surface **one single,
-  easily-dismissed suggested task** ("Build a proper forge") — never a queue, never a nag.
-  Researched and rejected three third-party trigger sources: **Achievements**
-  (mods.vintagestory.at/achievements) has no public API — only an undocumented internal
-  attribute found by decompiling its DLL, and a tiny (~2k) install base; **XSkills/XLib**
-  has a real API but skill-XP/ability-tiers are a poor fit for discrete milestones, and its
-  1.22.x support runs through a community fork-of-a-fork; **Survival Expanded**
-  (mods.vintagestory.at/survivalexpanded) is Achievements' own abandoned predecessor — a
-  dead end. **Scribe detects vanilla milestones itself** (first bronze/steel/fired-clay,
-  etc.) against first-party VS game events/inventory state — zero dependency, works for
-  every player. Either mod could later become optional *enrichment* (not the trigger).
-  Later/park tier, not v1.
-- **Writing desk as faction task-assignment, not just personal organization — needs research
-  before committing.** Idea: the v4 writing desk becomes a tool for a faction to assign tasks
-  to its members, not just a personal-notes consolidator; faction leaders could lock the
-  assignment feature so only they (not any member) can create/edit faction-wide tasks,
-  addressing the obvious griefing risk of any member being able to spam/delete others' tasks.
-  Pairs naturally with a "pin a task to your own lectern" feature, so a player's personal
-  lectern surfaces tasks the faction assigned them -- a real, distinctive throughline from
-  personal (lectern) to organizational (desk) tiers. Open question before scoping further:
-  vanilla Vintage Story has no first-party faction/guild system -- confirm whether this should
-  target an existing faction mod's data (dependency, like the Envelopes-interop idea above) or
-  be scoped down to "shared owner list" (a simpler, faction-system-agnostic group of player
-  UIDs) instead of true factions. Needs its own research pass before an OpenSpec change.
-- **Handbook bookmarking — decided, pursue long-term.** Bookmark a Survival Handbook entry
-  into the notebook as a task ("craft this once I have iron"). Acknowledged as the deepest
-  API integration on this list (needs Handbook page-ID access) — its own dedicated OpenSpec
-  change well after the core tiers exist, not a near-term item.
-- **Slack push integration — decided, pursue, one-way only.** A hidden/advanced config
-  option to connect a task list to Slack, pushing task-change notifications out. **One-way
-  (Scribe → Slack) only** — bidirectional would require the mod to run as a Slack app
-  backend (OAuth install, event subscriptions, a public callback endpoint), a much bigger
-  lift for little payoff. Mechanism: **Slack Incoming Webhooks**
-  (https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks) — the player
-  generates a webhook URL (via a Slack app with the `incoming-webhook` scope), pastes it
-  into config, and Scribe does a plain JSON `HTTP POST` on task changes. **The webhook URL
-  IS the secret** — no OAuth token handling needed, but it must never be logged or synced.
-  Known limits: destination channel/name/icon fixed at webhook creation (not per-message),
-  no delete-via-webhook, no published rate-limit number (debounce pushes, don't fire one
-  per keystroke). Framed as business/personal research (a hands-on excuse to learn the
-  Slack API) — keep it config-gated and undiscoverable by default, not a mainstream
-  feature. Later/park tier, not v1.
-- Lower-priority / needs more investigation: handwriting neatening with practice (skill
-  curve), item aging/wear visuals.
+## Chronicle & integrations (later)
+
+→ `docs/specs/chronicle-and-integrations.md`. Merges: death-leaves-a-last-entry,
+calendar-stamped entries + passive chronicle-building, milestone-suggested tasks (self-detected
+via inventory polling — zero dependency; three third-party trigger mods were researched and
+rejected), one-way Slack push via Incoming Webhooks (config-gated, undiscoverable, secret never
+logged/synced), and long-term Handbook bookmarking. Plus program-level meta workstreams:
+cross-world JSON export/import, localization (`lang/` beyond `en.json` — start the key structure
+early), a handbook/wiki authoring pass near shipping, and crediting JeanPierre (Wanderer's
+Sketchbook) in CREDITS.
+
+## Immersion ideas (curated — see project plan Reference for the full brainstorm)
+
+Grounded, distinctive ideas worth tracking. The clay-tier and social-tier ones are folded into
+their specs above (`v3-clay-tablet.md`, `v6-bulletin-board.md`); the chronicle-style ones into
+`chronicle-and-integrations.md`. Still-open highlights:
+
+- **Firing a tablet is a real crafting decision** — a fired tablet becomes a permanent,
+  read-only archive vs. staying soft/editable but water-fragile. The single most
+  historically-grounded mechanic on the list (v3 spec).
+- **Fire vs. water asymmetric fragility across tiers** — clay is fireproof but water-fragile;
+  paper/leather should invert this. Keeps later tiers from being strictly "better."
+- **Death leaves a last entry**, **calendar-stamped passive chronicle**, **signed vs. unsigned
+  notes**, **guestbook board variant**, **milestone-suggested tasks** — all specced (see
+  chronicle + v6 specs).
+- **Wax-seal "soft security"** — **decided: not via Envelopes** (that mod is items-only with no
+  API to seal a Scribe block/docId). Build native later or skip. Not urgent.
+- **Writing desk as faction task-assignment** — folded into `v4-writing-desk.md`; the
+  faction-backing choice is an open decision below.
+- **Handbook bookmarking** and **Slack push** — both decided-pursue, both in the chronicle spec;
+  late-stage.
+- Lower-priority / needs investigation: handwriting neatening with practice (skill curve),
+  item aging/wear visuals.
 
 ### UX lessons from PM/notetaking apps (Notion, Todoist, Bullet Journal, GTD, etc.)
 
-The core insight: **capture speed matters more than organization.** The game's own problem
-statement (long branching tech tree → distraction) is the same problem GTD calls "open-loop
-anxiety" — relief comes from getting a thought out fast, not from a well-organized system.
-Concrete, cheap changes this suggests:
+The core insight: **capture speed matters more than organization** — the game's "long branching
+tech tree → distraction" problem is GTD's "open-loop anxiety," relieved by getting a thought out
+fast. Concrete, cheap directions this suggests (several now folded into specs):
 
-- **A dedicated quick-add hotkey** that jots one line without opening the full document —
-  likely the single highest-leverage UX investment for a *held* writing item (notebook/
-  tablet), more valuable than for a stationary block like the lectern.
-- **Sort completed tasks toward the bottom** (or a collapsed "Done (N)" group) using the
-  `MoveBlock` primitive we already have — mirrors Kanban's "card leaves the column"
-  satisfaction without adding columns/lanes.
-- **Reorder via mouse drag**, not select + step up/down. The generic UX advice favors
-  step buttons to avoid fiddly drag gestures, but VS itself is heavily mouse-driven
-  (crafting grid, blacksmithing, clayforming), so drag-to-reorder is the more consistent
-  choice for this game specifically. `MoveBlock(from, to)` in Core doesn't care which
-  interaction calls it, so this is purely a GUI-layer decision.
-- **Tab / Shift+Tab to save-and-move-focus between rows while editing**, so a keyboard-only
-  player can add/edit many rows in a row without reaching for the mouse: Tab commits the
-  active row's text and moves focus to the row below (creating a new row at the end if
-  already on the last one is a natural extension, not required for a first cut); Shift+Tab
-  does the same moving upward. Worth revisiting what other hotkey affordances pair well with
-  this once it's built (e.g. Enter to commit-and-stay, Ctrl+Enter to commit-and-add-below) —
-  survey this as a small batch rather than one-off requests.
-- **A "carry forward" migration action** for the clay tablet's 3-line cap: copy undone
-  tasks into a fresh tablet, clearing the old one — Bullet-Journal-style migration, and a
-  natural fit since the tablet's scarcity already forces the "is this still worth keeping?"
-  moment.
-- **Discipline reminder:** resist adding due dates, priority, or tags as structured
-  `ScribeBlock` fields. If wanted, let players encode them as plain-text conventions
-  (Bullet-Journal-style signifiers, e.g. a `!` prefix) — zero schema cost, opt-in, and
-  avoids the "empty field I feel obligated to fill in" trap that makes task apps feel like
-  admin work. A full multi-column Kanban board is a likely mismatch for VS's single-column
-  GUI list — skip it; the writing desk's "categories" already covers grouping better.
+- **A dedicated quick-add hotkey** — highest-leverage UX investment for a held writing item.
+  Specced in `v5-backpack-hud.md`.
+- **Sort completed tasks toward the bottom** (or a collapsed "Done (N)" group) via the existing
+  `MoveBlock` primitive — the lighter cousin of the v4 kanban funnel.
+- **Reorder via mouse drag** (already shipped) over select+step buttons — VS is heavily
+  mouse-driven, so drag is the consistent choice.
+- **Tab / Shift+Tab / Enter to save-and-move-focus between rows** — being delivered by S2
+  (`lectern-edit-in-place-rows`); survey adjacent hotkey affordances (Ctrl+Enter to
+  commit-and-add-below, etc.) as a small batch once it's built.
+- **A "carry forward" migration** for the clay tablet's 3-line cap (Bullet-Journal-style) — a
+  Core op, specced in `v3-clay-tablet.md`.
+- **Discipline reminder:** resist due dates / priority / tags as structured `ScribeBlock`
+  fields; let players encode them as plain-text conventions (e.g. a `!` prefix) — zero schema
+  cost, opt-in. A full multi-column Kanban is a mismatch for VS's single-column GUI; the desk's
+  categories/tabs cover grouping better.
 
 For the full design record and rationale, see the project plan.
+
+## Open decisions (surfaced by the 2026-07-21 exploration; carried into each spec)
+
+These are the cross-cutting forks the specs couldn't settle without you. They don't block the
+specs (each documents its assumed default) but they shape sequencing and scope:
+
+1. **v4 faction-backing** — build task-assignment on VS's built-in player groups (no dependency,
+   real leader/member roles, but they read as chat groups), a dependency-free shared owner-UID
+   list, or a third-party faction mod (reintroduces a hard dep)?
+2. **Pull the trivial lectern-polish items out now** — the "Edit Tasks" relabel + face-on-place
+   have zero S2 dependency and would improve every playtest immediately. Standalone quick change,
+   or hold with the rest of the polish cluster?
+3. **v5 HUD pin scope** — when the source document is on an item you're NOT holding, do pinned
+   tasks still show (needs a server-pushed "my pins" summary) or only the currently-held
+   document's pins?
+4. **Notebook document store** — one shared `"scribe:doc:"` store across notebook + desk +
+   tablet, or separate stores? And duplicate the lectern's packets for the docId-keyed path
+   (leaves v1 untouched) vs. generalize them (DRYer, changes v1's wire format)?
+5. **Public board concurrency & signatures** (v6) — keep a lectern-style single-editor lock or
+   go lock-free last-write-wins; and are signatures always-on, per-entry toggle, or a
+   board-level policy set at placement?
+
+### Done / superseded (kept only as history)
+
+- **Optional in-game settings panel (ConfigLib, soft dep)** — adopted 2026-07-19
+  (`add-imgui-configlib-tuning`).
+- **ImGui debug-tuning overlay** — adopted 2026-07-19 (`add-imgui-configlib-tuning`); Debug-only,
+  Release-excluded, and can't render on Apple Silicon (see VSAPI-NOTES).
+- **ToastLib for the HUD** — investigated and rejected 2026-07-19 (stale for 1.22.x, ImGui
+  dep, no persist-and-update primitive). v5 uses a native `HudElement` instead.
+- **Configurable text-size minimum** — done 2026-07-20 (`MinTextSizePercent`; range retuned to
+  20%–120%).
+- **Static open-book / turn-page pagination UI** — superseded by `skeuomorphic-lectern-gui`,
+  which kept a continuous scrollable region (see that change's design.md decision 4). The mod
+  portal reference that motivated the backdrop art: https://mods.vintagestory.at/show/mod/42149.
+- **Freeform text-section blocks** (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
+  reserved for a future item/recipe, not the lectern (the "Add Note" button was removed in
+  add-lectern-block task 8.18); the Core capability + `ScribeBlockRowCell` text-row rendering are
+  kept working so a future recipe can reuse them with no Core changes.
