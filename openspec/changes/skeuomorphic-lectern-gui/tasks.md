@@ -292,13 +292,19 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       `AddVerticalScrollbar` hardcodes the base type; `GetScrollbar(key)` still returns it
       (cast to reach `RowStep`). Clean Debug+Release build, 35/35 Core.Tests. See
       VSAPI-NOTES.md "Mouse-wheel step is hardcoded". Live re-verify is 3.5's job.
-- [ ] 3.5 Manually test: create a document with enough rows to overflow the visible
+- [x] 3.5 Manually test: create a document with enough rows to overflow the visible
       dialog height; confirm every row is reachable by scrolling, in both read and editor
       view — rows visually move on scroll (not just cull in/out in place), editor-view row
       chrome (borders/checkbox outlines/drag glyphs) tracks its text, dragging the scrollbar
       thumb scrolls the rows smoothly and continuously (rows follow the thumb, not just jump
       on release) rather than dying after one step, and each mouse-wheel notch scrolls about
       one task row (not two).
+      **Confirmed 2026-07-20** (playtest report, fresh Mac build): wheel scroll works,
+      dragging the scrollbar handle works with rows following, clicking in the scroll track
+      works, and all rows are reachable. The 3.4a/3.4b/3.4c fixes are verified in-game. One
+      follow-up surfaced (not a failure of this test): a boundary row pops fully in/out on
+      scroll rather than being partially revealed — the known cull-don't-clip consequence,
+      parked as a ROADMAP limitation (real fix needs pixel clipping, confirmed unavailable).
 
 ## 4. Portrait reshape
 
@@ -316,7 +322,7 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       reference the `listWidth`/`EditorListWidth` constants, not hardcoded numbers --
       confirmed via grep; they pick up the new widths automatically, no further change
       needed.)
-- [ ] 4.4 Manually test in-game (rewritten 2026-07-19 — the original wording ("confirm
+- [x] 4.4 Manually test in-game (rewritten 2026-07-19 — the original wording ("confirm
       it reads well ... at the vanilla lectern's typical viewing distance") was flagged
       by the user as unclear how to actually act on): place a lectern, right-click it
       open at normal interaction range (don't back away or move closer than a normal
@@ -326,6 +332,8 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       without needing to lean in or zoom; (c) the portrait proportions (taller than
       wide) read as intentional rather than cramped — if any of these look wrong, note
       which one and what looked off rather than a bare pass/fail.
+      **Confirmed 2026-07-20** (playtest report): (a) fits, (b) legible, (c) proportions
+      read as intentional — all good.
 
 ## 5. Custom-drawn backdrop
 
@@ -349,9 +357,11 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       to change) rather than assuming the architecture satisfies it. (Concretely verified:
       generated a second placeholder image, overwrote the same asset path, rebuilt clean
       with zero code changes, then restored the original.)
-- [ ] 5.4 Manually test in-game: confirm the backdrop renders correctly behind both read
+- [x] 5.4 Manually test in-game: confirm the backdrop renders correctly behind both read
       and editor view content, with no rows rendered behind/under an opaque part of the
       backdrop.
+      **Confirmed 2026-07-20** (playtest report): backdrop renders correctly, no rows
+      obscured.
 
 ## 6. Row-list visual restyle
 
@@ -361,9 +371,17 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       text-size slider across its range and confirm the checkbox grows/shrinks with the
       row text, not staying a fixed pixel size. (`textSizeScale` threaded through
       `Compose`/`TextWidth`; manual in-game slider test still pending in 9.3.)
-- [ ] 6.2 Investigate whether `GuiElementSwitch`'s existing rendering can read as
+- [x] 6.2 Investigate whether `GuiElementSwitch`'s existing rendering can read as
       "circular" via its own constructor/params, or needs a custom element (design.md's
       open question) — decide based on how it actually looks in-game at the new scaling.
+      **Decided 2026-07-20: keep the built-in rounded-square checkbox; no custom element.**
+      The Slack-reference "circular checkbox" was an aspiration, not a requirement. In the
+      2026-07-20 playtest the built-in `GuiElementSwitch` renders as a clean rounded square
+      that scales correctly with text size (see 6.1) and the user raised no concern about
+      its shape. A custom circular element is real work for a purely cosmetic gain; if a
+      circular look is still wanted later it belongs with the parked "custom checkbox visual
+      with stamp/erase animation" ROADMAP item (which would replace this element wholesale),
+      not as a standalone shape tweak here.
 - [x] 6.3 Increase row spacing and add a subtle divider between rows (or between the row
       list and the toolbar), matching the Slack reference's generous, airy spacing rather
       than the current tight stacking. (`RowSpacing` raised 6px -> 14px; `AddRowDivider`
@@ -388,9 +406,11 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
       in their own `RenderInteractiveElements`, scoped to that element only -- no custom
       code needed. It's a subtle full-area alpha wash, not a crisp border; live visual
       confirmation of whether that reads well enough deferred to 9.3.)
-- [ ] 6.6 Manually test in-game: confirm hover-icon show/hide does not reset focus or
+- [x] 6.6 Manually test in-game: confirm hover-icon show/hide does not reset focus or
       caret position while typing (the exact regression this render-time approach is
       meant to avoid — verify it actually holds, don't just assume the mechanism works).
+      **Confirmed 2026-07-20** (playtest report): typing continues undisturbed while
+      hovering an icon with a textarea active, and while hovering other rows mid-type.
 
 ## 7. Pin toggle GUI affordance
 
@@ -411,9 +431,12 @@ proposed — no longer blocked. Still worth a fresh look since the files changed
 - [x] 7.4 Confirm `AssignedToUid` has zero GUI surface anywhere in this file — no column,
       no toggle, nothing composed or seeded (design.md non-goal; verify by grep, not
       assumption). (Grepped `src/Mod/` for `AssignedToUid` — zero matches.)
-- [ ] 7.5 Manually test in-game: pin and unpin a task in editor view; switch to read view
+- [x] 7.5 Manually test in-game: pin and unpin a task in editor view; switch to read view
       and back; confirm the pinned state persists across a save/reload (fully quit and
       relaunch, not just close/reopen the dialog).
+      **Confirmed 2026-07-20** (playtest report): pins survive view-switching and a full
+      quit/relaunch. (Separately noted, not part of this test: the pin icon is hover-only
+      once pinned rather than always-visible — a UX gap tracked as a backlog item.)
 
 ## 8. Atlas integration-test coverage
 
@@ -446,11 +469,16 @@ manual playtesting in group 9 instead.)
 - [x] 9.1 `dotnet build src/Mod/Mod.csproj` — confirm clean build.
 - [x] 9.2 `dotnet test tests/Core.Tests/Core.Tests.csproj` — confirm all pass, including
       group 2's new tests. (35/35 passing.)
-- [ ] 9.3 Full manual playtest pass: place a lectern, open read + editor view, add enough
+- [x] 9.3 Full manual playtest pass: place a lectern, open read + editor view, add enough
       rows to require scrolling, drag-reorder while scrolled, resize via text-size slider,
       pin/unpin a task, confirm no regression versus `add-lectern-block`'s existing
       playtesting checklist (its tasks.md group 7) for anything not specific to the old
       wide layout or the old fixed checkbox size.
+      **Confirmed 2026-07-20** (playtest report, fresh Mac build): drag-reorder works and
+      lands correctly, text-size resize across the full 30–150% range works without overlap
+      or crash (the low-end icon-render crash fix verified), pin/unpin works, no regressions.
+      Feature request logged (not a defect): a live "rows spread to preview the drop target"
+      animation during drag-reorder — parked in ROADMAP.
 - [x] 9.4 Confirm old-version saved documents fail to load safely (no crash, no partial/
       corrupt document) rather than silently misreading old bytes as new-format data —
       this is the accepted-breaking-change behavior from design.md decision 8; proven

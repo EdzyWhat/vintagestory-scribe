@@ -17,7 +17,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
 
 ## skeuomorphic-lectern-gui
 
-- [ ] `9e2c1a30` **(3.5) Scrolling a long list.** Open a lectern and add enough tasks and
+- [x] `9e2c1a30` **(3.5) Scrolling a long list.** Open a lectern and add enough tasks and
       notes that they don't all fit in the box and a scrollbar appears on the right. Test all
       three ways of scrolling, in **both** the plain right-click read view and the
       shift+right-click edit view:
@@ -37,7 +37,13 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
          the very last row and it's fully visible, and back to the very first — nothing is
          permanently cut off at the top or bottom, and no row spills out below the box's
          bottom edge or above its title.
-- [ ] `c0c0fc4d` **(4.4) Dialog fits and reads well.** Place a lectern and right-click to
+      - **Confirmed 2026-07-20** (playtest report, fresh build): wheel scroll works, dragging
+        the scrollbar handle works (rows follow), clicking in the scroll track works, and all
+        rows are reachable. Resolves the scroll requirement that was reopened for 3.4a/3.4b.
+        (A follow-up on partial-row visibility at the scroll boundary is tracked separately —
+        see the general note in ROADMAP.md, not folded into this verdict since the tested
+        behavior — every row reachable, list moves as one — is met.)
+- [x] `c0c0fc4d` **(4.4) Dialog fits and reads well.** Place a lectern and right-click to
       open it at normal standing distance (don't back away or step unusually close). Check
       three things, and if any looks wrong say which one and what was off (rather than just
       pass/fail):
@@ -46,15 +52,20 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       (b) the row text at the default text size is comfortably readable without leaning
       toward the screen;
       (c) the shape (taller than it is wide) looks deliberate, not squeezed or cramped.
-- [ ] `e624a788` **(5.4) Backdrop renders correctly.** With the lectern open, confirm the
+      - **Confirmed 2026-07-20** (playtest report): (a) fits, (b) readable, (c) proportions
+        read as intentional — all good.
+- [x] `e624a788` **(5.4) Backdrop renders correctly.** With the lectern open, confirm the
       parchment backdrop image sits correctly behind the content in both read and edit view,
       and that no row is drawn underneath an opaque part of the backdrop (i.e. no text hidden
       or half-hidden behind the background).
-- [ ] `805e78a7` **(6.6) Hovering icons doesn't disturb typing.** In edit view, click into a
+      - **Confirmed 2026-07-20** (playtest report): backdrop renders correctly.
+- [x] `805e78a7` **(6.6) Hovering icons doesn't disturb typing.** In edit view, click into a
       note and start typing. While typing, move your mouse over a different row so its
       delete/pin icons appear, then move it away again. Your typing cursor should stay exactly
       where it was and your text should be unaffected — moving the mouse over other rows must
       not interrupt what you're typing.
+      - **Confirmed 2026-07-20** (playtest report): typing continues undisturbed while hovering
+        over an icon with a textarea active, and while hovering other rows mid-type.
 - [x] `0f961614` **(7.5) Pin survives reload.** Pin a task, switch between read and edit view,
       then fully quit the game to desktop and relaunch. The task should still be pinned.
       - **Confirmed 2026-07-20** (playtest report): pin survives view-switching and a full
@@ -62,13 +73,17 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       - *(Earlier note, still open as a separate backlog item, not this test:* the pin icon
         is currently only visible on hover, not always-shown once a task is pinned — a real
         UX gap but a design change, tracked separately.)
-- [ ] `88d4f7b2` **(9.3) Full scroll-and-edit pass.** With a list long enough to scroll:
+- [x] `88d4f7b2` **(9.3) Full scroll-and-edit pass.** With a list long enough to scroll:
       scroll down partway, then in edit view drag a row by its handle to reorder it (confirm
       it lands where you dropped it and the click lined up with the row you grabbed); drag the
       text-size slider across its range (confirm rows grow/shrink and re-wrap without
       overlapping); pin and unpin a task. Overall, confirm nothing regressed versus how the
       lectern behaved before — no rows spilling out of the box, no frozen or misplaced pieces,
       no lost clicks.
+      - **Confirmed 2026-07-20** (playtest report): drag-reorder works and lands correctly, no
+        regressions. Feature request logged separately (not a defect): drag-reorder currently
+        moves rows only on drop; a smooth "rows spread to show the drop target" animation
+        while dragging would give better feedback — tracked in ROADMAP.md.
 
 ## add-lectern-block
 

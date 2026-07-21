@@ -89,6 +89,24 @@ age (the saw); anything past that is cosmetic.
   presentational reward-for-completion polish — no data-model changes. Needs actual art/
   audio assets, not just code, so this waits until closer to a polish pass rather than
   competing with core-tier work.
+- **Smooth drag-reorder animation.** From playtesting feedback (2026-07-20): the editor's
+  drag-to-reorder works but only moves rows on drop — the list stays static while dragging.
+  Many reorder UIs animate the other rows spreading/shifting to preview where the dragged
+  row will land, giving live feedback. Purely presentational; the `MoveBlock` model and
+  hit-testing already work. Non-trivial GUI work (rows are composed at fixed Y per frame,
+  so a live preview means offsetting the non-dragged rows' composed Y around the current
+  hover target and recomposing as the target changes) — a polish-pass item, not core-tier.
+- **Partial-row visibility at the scroll boundary (cull → clip).** From playtesting feedback
+  (2026-07-20, two screenshots one wheel-tick apart): a row at the top/bottom edge pops
+  fully in/out rather than being partially revealed/hidden as you scroll. This is the direct,
+  known consequence of the cull-don't-clip design (design.md Decision 4): since the engine's
+  scissor doesn't actually clip this row list's rendering, a row is only composed once it's
+  *fully* inside the visible window, so it can't be shown half-hidden. Making a row render
+  partially would require real pixel clipping of a composed row, which was confirmed
+  unavailable for this mixed static+interactive list (would mean reimplementing text-input/
+  checkbox rendering to draw per-frame like `GuiElementFlatList`, a large rewrite — see
+  design.md's rejected Handbook-architecture investigation). Parked as a known limitation
+  with a real but expensive fix; revisit only if the pop-in reads as jarring in practice.
 - **Icon-font audit session.** From playtesting feedback (2026-07-19): a dedicated
   session to open the engine's built-in icon-font options for the user, list every icon
   currently in use across the lectern GUI (drag handle, pin, delete, add-task, collapse,
