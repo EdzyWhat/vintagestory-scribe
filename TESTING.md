@@ -40,7 +40,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       a stray character into the text.
       - **Confirmed 2026-07-21** (playtest report 2026-07-21T13-03-17): "All these functions
         work." — word/line caret nav and shift-extend all behave, no stray characters.
-- [ ] `8634ee5d` **(6.3) Commit, navigate, revert, persist.** In an editor row: press Enter
+- [x] `8634ee5d` **(6.3) Commit, navigate, revert, persist.** In an editor row: press Enter
       (commits the edit and moves focus to the next row down), Shift+Tab (commits and moves up),
       and Esc (throws away the in-progress edit, restoring the row's prior text); then click
       away from a row (should commit). Finally switch read↔edit view and fully reload the world —
@@ -56,7 +56,10 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         base dialog close; blur-commit saves the pending edit on the way out. On retest, confirm
         Esc closes AND the last edit persisted, and exercise the view-switch + reload persistence
         half that wasn't reached before. (tasks.md 4.4 / 6.3.)
-- [ ] `2dbcaf33` **(6.4) No focus jump.** Click a row to focus it (the floating input appears),
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "Enter commits. Shift+Tab
+        commits and moves up. ESC closes and commits. Edit→Read and leave world, the changes are
+        saved." All four behaviors + the reload-persist half verified.
+- [x] `2dbcaf33` **(6.4) No focus jump.** Click a row to focus it (the floating input appears),
       then click away to blur it (the static label returns). Watch the text closely — it should
       sit at the exact same position, baseline, and size in both states, with no visible jump or
       shift as the input swaps in and out.
@@ -69,14 +72,25 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       - **Fix staged (awaiting retest) 2026-07-21:** `ScribeRowTextInput.ComposeTextElements` now
         skips the base emboss border + dark fill, keeping only the subtle focused-highlight
         background. On retest, focus/blur a row and confirm the text no longer jumps. (tasks.md 6.9.)
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "focus/blur a row and I can
+        confirm the text no longer jumps." Borderless-input fix verified.
 - [ ] `8f37a2f3` **(6.5) Editor clips and scrolls; widths match.** In editor view, add enough
       rows to overflow the box. Scroll: rows should slide continuously and clip cleanly at the
       top/bottom edge (not blink out / pop in fixed spots). Then switch between read and editor
       view and confirm the row list is the exact same width in both.
-- [ ] `9a2eddd4` **(6.6) Read view still fine.** After all the shared-width and scroll changes,
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T14-19-12 + screenshots): the
+        **widths match** in editor and read (that half passes), and scrolling is continuous, BUT
+        the **clip is not clean** — see general-note "Extra 3" and screenshot
+        2026-07-21T14-17-01-general.png: row rulings/chrome render *past the top clip boundary* and
+        bleed over the area above the list. Related bleed below the list in
+        2026-07-21T14-12-21-general.png (a newly-added task's input drawn near screen bottom,
+        outside the box). Retest after the clip-bleed fix (tracked as a follow-up, see 6.10/6.11).
+- [x] `9a2eddd4` **(6.6) Read view still fine.** After all the shared-width and scroll changes,
       go back to the plain read view and confirm nothing regressed: clicking a task's checkbox
       toggles it done, the lined-paper ruling draws correctly, and a long list clips/scrolls
       properly.
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "All good." Read-view
+        checkbox toggle, ruling, and scroll all still work after the shared-width/scroll changes.
 - [ ] `3ed89b7c` **(6.8) Re-click keeps focus + places caret.** Click into an editor row (caret
       appears), then click that SAME row again: the caret should stay, you can keep typing, and
       the caret should jump to where you clicked. Then click a DIFFERENT row and confirm focus
@@ -86,6 +100,24 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         different-row click recovered it. Root cause decompile-confirmed (overlapping non-focusable
         row ate the mouse-down and `GuiComposer.OnMouseDown` blurred the input); fixed by having the
         focused row yield its text-column mouse-down to the input. This retest confirms the fix.
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "Confirm the caret moves
+        appropriately on re-click in input." Re-click keeps focus and places the caret; fix holds.
+- [ ] `21041e34` **(6.10) Content bleeds past the clip boundary.** With a list long enough to
+      overflow, scroll and add tasks; confirm NO row ruling, chrome, or text-input renders outside
+      the dialog box — not above the title, not below the box over the buttons, not down the screen.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T14-19-12, screenshots): a
+        newly-added task's floating input drew near the bottom of the screen, far below the box
+        (2026-07-21T14-12-21-general.png), and row rulings/chrome drew above the top clip boundary
+        while scrolled (2026-07-21T14-17-01-general.png). Prime suspect: `GuiElementTextInput`'s
+        `GlScissorFlag(false)` clobber defeating the dialog's `BeginClip` (already noted in
+        VSAPI-NOTES for the mixed list). Needs investigation + fix.
+- [ ] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
+      long enough to overflow the box, click Add Task; confirm the new (focused, empty) task is
+      scrolled into the visible area rather than appearing below the box / off-screen.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T14-19-12, general note "Extra 1"):
+        the new task is appended at the bottom out of view and the list doesn't scroll to it, so
+        it appears out of bounds. Fix: scroll to the newly focused row after Add Task. (Related to
+        6.10 — the out-of-bounds row is only visible because of the clip bleed.)
 
 ## skeuomorphic-lectern-gui
 

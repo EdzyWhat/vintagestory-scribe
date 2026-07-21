@@ -59,18 +59,20 @@
 ## 6. Build, test, and playtest
 
 - [x] 6.1 Build Debug and Release clean; run `dotnet test` (Core.Tests) — all green.
-- [ ] 6.2 Manually test in-game (Mac, `build/restage.sh`, full relaunch): Cmd+Arrow jumps to
+- [x] 6.2 Manually test in-game (Mac, `build/restage.sh`, full relaunch): Cmd+Arrow jumps to
       line ends, Alt/Option+Arrow skips by word, Shift extends selection during each — and none
-      of these insert stray characters.
-- [ ] 6.3 Manually test in-game: Enter commits + advances, Shift+Tab commits + retreats, Esc
+      of these insert stray characters. *(Confirmed 2026-07-21T13-03-17.)*
+- [x] 6.3 Manually test in-game: Enter commits + advances, Shift+Tab commits + retreats, Esc
       commits-and-closes the dialog (per the 2026-07-21 decision, NOT revert), clicking away
-      commits; edits persist across a view switch and reload.
-- [ ] 6.4 Manually test in-game: focusing/blurring a row shows no baseline/position/size jump
-      between the static label and the floating input.
+      commits; edits persist across a view switch and reload. *(Confirmed 2026-07-21T14-19-12.)*
+- [x] 6.4 Manually test in-game: focusing/blurring a row shows no baseline/position/size jump
+      between the static label and the floating input. *(Confirmed 2026-07-21T14-19-12.)*
 - [ ] 6.5 Manually test in-game: editor rows clip (not pop) at the scroll boundary and scroll
-      continuously; read and editor views are the same row-list width.
-- [ ] 6.6 Confirm no regression to the read view (checkbox toggle, ruling, clipping) after the
-      shared-width and scroll-path changes.
+      continuously; read and editor views are the same row-list width. *(Widths + continuous
+      scroll confirmed 2026-07-21T14-19-12; CLIP is broken — chrome/rulings bleed past the top
+      boundary and a new-task input renders below the box. See 6.10/6.11.)*
+- [x] 6.6 Confirm no regression to the read view (checkbox toggle, ruling, clipping) after the
+      shared-width and scroll-path changes. *(Confirmed 2026-07-21T14-19-12.)*
 
 ### Playtest follow-up fixes (from report 2026-07-21T13-03-17)
 
@@ -81,13 +83,36 @@
       input. Fixed in `ScribeRowElement.OnMouseDownOnElement`: the focused row (`suppressText`)
       yields its text-column mouse-down to the input (no `args.Handled`), so the input keeps focus
       AND places the caret at the click. Recorded in VSAPI-NOTES.md. **Retest in-game (6.8).**
-- [ ] 6.8 Manually test in-game: click into an editor row, then click it AGAIN — the caret stays,
+- [x] 6.8 Manually test in-game: click into an editor row, then click it AGAIN — the caret stays,
       you can keep typing, and the caret moves to where you clicked (click-to-place). Confirm a
-      different-row click still moves focus + commits the prior row.
+      different-row click still moves focus + commits the prior row. *(Confirmed 2026-07-21T14-19-12.)*
 - [x] 6.9 **Input border removed (fixed).** The floating input's baked emboss border read as the
       text "jumping" on focus (tester's side note). `ScribeRowTextInput.ComposeTextElements` now
       skips the emboss + dark fill, keeping only the subtle focused-highlight background. **Retest
-      via 6.4** (the no-jump item this was failing).
+      via 6.4** (the no-jump item this was failing). *(Confirmed via 6.4, 2026-07-21T14-19-12.)*
+
+### Playtest follow-up fixes (from report 2026-07-21T14-19-12)
+
+- [ ] 6.10 **BUG — content bleeds past the clip boundary.** Screenshots show (a) a newly-added
+      task's floating input rendered near the bottom of the screen, well below the dialog box
+      (2026-07-21T14-12-21-general.png), and (b) row rulings/chrome drawn *above* the top clip
+      boundary, overlapping the title area, while scrolled (2026-07-21T14-17-01-general.png).
+      Something in the editor row/input path is escaping the `BeginClip` scissor. Investigate:
+      the floating `ScribeRowTextInput` is a `GuiElementTextInput` whose `RenderInteractiveElements`
+      calls `GlScissor`/`GlScissorFlag(true)` then `GlScissorFlag(false)` — VSAPI-NOTES already
+      flags that this flag clobber defeats the dialog's clip for a mixed list. That is the prime
+      suspect for the input rendering unclipped below the box; confirm and fix (e.g. the input must
+      not render when its row is outside the visible range, or the scissor must be restored).
+- [ ] 6.11 **BUG — adding a task while scrolled/overflowing puts the new row off-screen.** With
+      enough rows to overflow, Add Task appends at the bottom (out of the visible area) and the
+      view does not scroll to it, so the new task (and its focused input) appears out of bounds
+      rather than being scrolled into view. Fix: after Add Task, scroll the list so the newly
+      focused row is visible (and within the clip region). Ties into 6.10 (the out-of-bounds input
+      is only visible at all because of the clip bleed).
+- [ ] 6.12 **DECISION/FEATURE — insert new task below the one being edited?** Tester asks: when a
+      row's input is focused and you click Add Task, insert the new task directly *below the row
+      being edited* rather than at the list bottom. Open question flagged by the tester: is that
+      discoverable, or confusing? Needs a product decision before speccing (surfaced to the user).
 
 ## 7. Close out
 
