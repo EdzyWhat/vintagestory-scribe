@@ -1,13 +1,16 @@
 ## 1. Caret-convention text input subclass
 
-- [ ] 1.1 Add `ScribeRowTextInput : GuiElementTextInput` in `src/Mod/`, overriding `OnKeyDown`.
-- [ ] 1.2 Route `CommandPressed` + Left/Right onto the inherited line-start/line-end caret logic
+- [x] 1.1 Add `ScribeRowTextInput : GuiElementTextInput` in `src/Mod/`, overriding `OnKeyDown`.
+- [x] 1.2 Route `CommandPressed` + Left/Right onto the inherited line-start/line-end caret logic
       (the same the base runs for Ctrl+Home/End), marking `args.Handled` before `base.OnKeyDown`.
-- [ ] 1.3 Route `AltPressed` + Left/Right onto the inherited word-skip (`MoveCursor(dir,
+      (Implemented by rewriting Cmd+Left/Right to Home/End before delegating to the base.)
+- [x] 1.3 Route `AltPressed` + Left/Right onto the inherited word-skip (`MoveCursor(dir,
       wholeWord: true)`), acting before the base's `AltPressed` early-return can swallow it.
-- [ ] 1.4 Ensure `ShiftPressed` combined with any of the above extends selection (inherited
+      (Implemented by clearing Alt + setting Ctrl on the arrow event before delegating.)
+- [x] 1.4 Ensure `ShiftPressed` combined with any of the above extends selection (inherited
       behavior preserved — the override must not consume the key in a way that drops selection).
-- [ ] 1.5 Surface Enter / Shift+Tab / Esc from the subclass to the dialog (callbacks or handled
+      (Shift is copied onto every rewritten event; the base's shift-extend runs unchanged.)
+- [x] 1.5 Surface Enter / Shift+Tab / Esc from the subclass to the dialog (callbacks or handled
       flags) for row navigation and revert, deferring all other keys to `base.OnKeyDown`.
 
 ## 2. Editor rows on ScribeRowElement (edit mode)
