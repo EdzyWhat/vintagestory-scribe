@@ -6,6 +6,12 @@ re-verified it yourself; the agent-written verdict line under a checked item is 
 actually confirms it. Hand-checking a box with no verdict line will be reverted next
 regeneration.
 
+Each item's verdict line puts it in one of four states (its bold lead word): **Confirmed**
+(done, box checked), **Still broken** (needs a retest), **Backlogged** (deferred), or
+**Obsolete** (feature changed; test no longer applies). The playtest checklist app shows
+these as tabs. Any item carrying a verdict is kept across regeneration; only untested
+items are re-derived fresh from `tasks.md`.
+
 **How to refer to an item across machines:** quote its **code** (the `` `xxxxxxxx` ``
 fingerprint the app shows on each item). Item text leads with its task number in parentheses
 (e.g. `(3.5)`); the number is unambiguous under its spec group heading.
@@ -85,16 +91,61 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         moves rows only on drop; a smooth "rows spread to show the drop target" animation
         while dragging would give better feedback — tracked in ROADMAP.md.
 
+## lectern-gui-quick-edit-affordances
+
+> Note: much of this change's read-view toggle work was delivered by the archived
+> `lectern-custom-row-list-read-view` (S1 of the row-list rework) instead, so the toggle and
+> checkbox-scaling items below are already satisfied. The single-width and combined-retest
+> items depend on view unification that S1 did NOT do (editor view is still separate); that
+> unification is now expected from the rework's S2, so those items are parked pending it — and
+> this change likely wants re-scoping against the rework.
+
+- [x] `1cedccb3` **(4.4) Toggle a task from read view.** In the plain right-click read view,
+      click a task's checkbox; confirm the done state updates and syncs, and that clicking or
+      hovering elsewhere on the row does nothing (the rest of the row is non-interactive).
+      - **Confirmed 2026-07-21** via the S1 playtest this session: clicking a read-view
+        checkbox toggles done and the glyph updates after the server round-trip; the rest of
+        the row is inert. Delivered by `ScribeToggleTaskMessage` /
+        `BlockEntityScribeLectern.ToggleTaskFromReader` (lock-free), archived under
+        `lectern-custom-row-list-read-view`.
+- [x] `b3613621` **(6.3) Checkbox scales with text size.** Change the text-size preference
+      across its range; confirm the checkbox grows and shrinks with the text, not staying a
+      fixed size.
+      - **Confirmed 2026-07-21** via the S1 playtest this session: after changing text size,
+        the row text, ruling padding, and checkbox glyph all resized consistently and
+        proportionally (read view via `RowTextLayout`'s `ToggleWidth * TextSizeScale`; editor
+        view's switch already scaled from the skeuomorphic work).
+- [ ] `1130aaae` **(5.3) One row-list width across both views.** Switch between read and
+      editor view on the same lectern; confirm the row list is a single consistent width in
+      both, not two different widths.
+      - **Backlogged 2026-07-21:** not built. S1 kept `ReadListWidth`/`EditorListWidth`
+        separate (editor view untouched), so the two views are still different widths by
+        design until the rework's S2 unifies them. Can't pass yet; revisit when S2 lands (or
+        mark obsolete if this change is re-scoped into the rework).
+- [ ] `0b55bba9` **(7.4) Combined read/edit affordances retest.** Restage and retest the
+      read-view toggle, the unified row-list width, and checkbox scaling together, plus a
+      scroll pass for row-rendering regressions.
+      - **Backlogged 2026-07-21:** gated on the single-width work above (5.3), which isn't
+        built. The toggle and scaling halves are already confirmed individually; this combined
+        gate can't be run until width unification lands (rework S2).
+
 ## add-lectern-block
 
 - [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
       each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
       and that when one player edits, the other sees the change appear live in their read view
       of that same lectern.
+      - **Backlogged 2026-07-19** (playtest report 2026-07-19T10-56-08): user deferred —
+        "complex task, move to the bottom of the roadmap, but before mod release." Needs a
+        two-client / headless-server setup; not blocked by code, parked by choice until closer
+        to release.
 - [ ] `2a105a38` **(7.6) Editor lock.** Have one player open a lectern in edit view (holding
       the lock). Confirm a second player is refused edit access to that same lectern but can
       still open it read-only, and that when the first player closes it or disconnects, the
       lock releases so the second player can then edit.
+      - **Backlogged 2026-07-19** (playtest report 2026-07-19T10-56-08): user deferred alongside
+        7.5 — "complex task, move to the bottom of the roadmap, but before mod release." Same
+        two-client setup requirement; parked until closer to release.
 
 ## add-imgui-configlib-tuning
 

@@ -143,6 +143,14 @@ age (the saw); anything past that is cosmetic.
   setting the placed block's facing from `byPlayer`'s look direction). Small block-definition/
   placement change in `BlockScribeLectern`; check how the vanilla `Block` "aged book lectern"
   clutter shape handles orientation before inventing one.
+- **Relabel the editor's "Edit" button to "Edit Tasks."** From playtesting (2026-07-19): the
+  bare "Edit" reads ambiguously; "Edit Tasks" is clearer about what the mode does. Trivial lang
+  string change (`scribe:scribe-gui-switch-to-editor` or its label).
+- **Narrower icon columns at large text size.** From playtesting (2026-07-19): when text size is
+  cranked up, the drag / pin / delete icon columns feel like they take too much horizontal space
+  relative to the text. Consider scaling those gutter widths sub-linearly with text size (or
+  capping them) rather than the current straight `* TextSizeScale`. Fits naturally into the
+  row-list rework, since S2 revisits the editor row layout anyway.
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
 - Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
