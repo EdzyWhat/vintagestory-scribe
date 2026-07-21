@@ -158,9 +158,16 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       should be saved (reopen and confirm it persisted) rather than lost.
       - **Still broken 2026-07-21** (playtest report 2026-07-21T08-13-42): the editor view never
         auto-closes on walk-away — the tester walked hundreds of blocks and the dialog stayed
-        open, so the flush half of the test couldn't even be reached. The walk-away auto-close
-        (range check that should close the GUI + flush the edit) appears not to fire. Needs a
-        code fix, then a retest of both the close and the flush. Logged in ROADMAP.md.
+        open, so the flush half of the test couldn't even be reached.
+      - **Fix applied 2026-07-21 (awaiting retest):** root cause found by decompile — the base
+        `GuiDialogBlockEntity.OnFinalizeFrame` auto-close gates on `IsInRangeOfBlock`, which
+        measures against the player's `WorldData.PickingRange`; the engine inflates that to ~100
+        blocks in Creative mode (the tester placed the lectern from creative inventory), so the
+        close threshold was ~100 blocks instead of survival's ~5 and effectively never triggered.
+        `GuiDialogScribeLectern.IsInRangeOfBlock` now overrides the base to gate on the fixed
+        `GlobalConstants.DefaultPickingRange` (~4.5) in all game modes. Builds clean, 35/35 Core
+        tests pass. **Retest needed:** in Creative, open the editor, walk ~6+ blocks away, confirm
+        the dialog auto-closes AND the pending edit was flushed (reopen and see it persisted).
 - [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
       each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
       and that when one player edits, the other sees the change appear live in their read view

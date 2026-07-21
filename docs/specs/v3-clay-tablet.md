@@ -1,13 +1,39 @@
-# v3 — Clay tablet (scratch tier)
+# v3 — Scratch tier: clay & wax tablets
 
 > Exploration/design spec (not an OpenSpec change, not implemented code). Input to a future
 > `openspec-propose`. Follows `docs/specs/README.md`. Merges these ROADMAP.md items: the v3
-> **Clay tablet (scratch)** tier; the parked **stamping mechanic** (cross-referenced, not fully
-> specced — a later change); the immersion idea **"Firing a tablet is a real crafting
-> decision"** (fired → permanent read-only archive); the immersion idea **"Fire vs. water
-> asymmetric fragility across tiers"**; and the UX idea **"carry-forward migration"** (Bullet-
-> Journal-style, fitting the 3-line cap). Cuneiform-style stamped font is cross-referenced only
-> (belongs to `presentation-and-fonts.md`).
+> **scratch** tier (originally scoped as the **clay tablet**, now covering **two sibling
+> artifacts — the clay tablet and the wax tablet**); the parked **stamping mechanic**
+> (cross-referenced, not fully specced — a later change); the immersion idea **"Firing a tablet
+> is a real crafting decision"** (fired clay → permanent read-only archive); the immersion idea
+> **"Fire vs. water asymmetric fragility across tiers"** (which the two scratch artifacts now
+> embody *within a single tier* — clay is water-fragile, wax is heat-fragile); and the UX idea
+> **"carry-forward migration"** (Bullet-Journal-style, fitting the tight line cap). Cuneiform-
+> style stamped font is cross-referenced only (belongs to `presentation-and-fonts.md`).
+>
+> **File name note:** this file is still `v3-clay-tablet.md` (unchanged, to preserve the three
+> ROADMAP.md pointers to it) even though its title now covers the whole scratch tier including
+> wax. Rename later if desired.
+>
+> **The wax tablet (2026-07-21 addendum).** The scratch tier now ships **two** artifacts that
+> share almost all infrastructure but sit at opposite ends of the fragility axis:
+> - **Clay tablet** — soft/unfired clay; **water-fragile** (wets out); can be **fired** into a
+>   permanent, read-only, water-proof archive. Fully specced below; unchanged by this addendum.
+> - **Wax tablet** — a beeswax writing surface on a wooden frame (the classic Roman reusable
+>   tablet); **NOT water-fragile** (swimming/falling in water does **not** damage or destroy it)
+>   and **erasable/reusable in place** (smooth it flat to start over). Wax is deliberately **not
+>   strictly better** than clay, but the balance is **material cost, not a punishing drawback**:
+>   beeswax is a comparatively expensive, beekeeping-gated material (skep → honeycomb → pressed
+>   wax) where clay is dug cheaply everywhere, and — crucially — **clay can be fired into a
+>   permanent read-only archive while wax can never be made permanent** (it stays ephemeral and
+>   erasable). So clay wins on cheapness + archival permanence; wax wins on water-resistance +
+>   effortless reuse. Neither dominates. (No heat/melt penalty — beeswax is our only wax and an
+>   invented "wax melts near fire" mechanic would be punishing without adding real choice.)
+>
+> Wherever this spec says "the tablet" for shared behavior (docId store, offhand-stylus gate,
+> row-list editor, rack storage, line cap, carry-forward), it applies to **both** artifacts. The
+> **deltas** unique to each are called out explicitly (clay: fire→archive + water damage; wax:
+> water-immune + in-place erase, balanced by higher material cost).
 >
 > **Builds directly on `docs/specs/v2-notebook.md`.** The tablet reuses v2's `docId`-on-item
 > store, its held-item GUI-open + server-authoritative save plumbing, and its shared row-list
@@ -18,9 +44,15 @@
 
 ## Summary
 
-The clay tablet is Scribe's **scratch tier** — the crudest, earliest writing artifact, made in
-the stone age before metal tools exist. It is a **soft, unfired clay item** that opens the same
-task/note document UI as the notebook and lectern, but:
+Scribe's **scratch tier** is the crudest, earliest writing family — made in the stone age
+before real bookbinding exists — and ships as **two sibling artifacts, the clay tablet and the
+wax tablet**, that share one document-UI, one docId store, one stylus gate, and one line cap,
+but occupy opposite ends of the fragility axis.
+
+### Clay tablet (the original v3 artifact)
+
+The clay tablet is a **soft, unfired clay item** that opens the same task/note document UI as
+the notebook and lectern, but:
 
 - Its document is capped at **3 blocks (lines)** — deliberate scarcity that forces "is this
   still worth keeping?" and motivates the whole tier progression.
@@ -40,10 +72,47 @@ task/note document UI as the notebook and lectern, but:
   "carry forward undone tasks into a fresh tablet, clearing this one" operation (Bullet-Journal
   migration) — a pure Core document operation.
 
-The tablet is the **first artifact that exercises v2's `docId` store from a second item type**,
-validating that the store is genuinely artifact-agnostic. It adds three genuinely new concerns
-on top of v2: (1) a **soft vs. fired lifecycle** modeled as a Core flag enforced server-side,
-(2) **water-contact damage** while held or dropped, and (3) an **offhand-tool gate** on editing.
+### Wax tablet (the 2026-07-21 sibling)
+
+The wax tablet is a **beeswax writing surface poured/smoothed onto a small wooden frame** — the
+classic Roman-era reusable tablet. It opens the **same** document UI, uses the **same** docId
+store, the **same** offhand-stylus gate, and the **same** row-list editor as the clay tablet.
+Its differences are all on the fragility/lifecycle axis, and they are the deliberate *inverse*
+of clay's:
+
+- It is **NOT water-fragile** — the explicit, required contrast. Swimming or falling in water
+  while holding it, or dropping it in water, does **not** damage or destroy the document. (No
+  `dissolveInWater`, no `OnHeldIdle` water-damage tick.) This is the single load-bearing wax
+  behavior.
+- It is instead **heat-fragile**: near lava/fire (or if the holder is on fire), the wax softens
+  and the writing smooths away — modeled as damage-or-destroy analogous to clay's water damage,
+  but keyed on heat/lava rather than liquid. This is what keeps wax from being strictly better
+  than clay (see the asymmetric-fragility table).
+- It is **erasable/reusable in place**: historically you smooth the wax flat with the blunt end
+  of the stylus to reuse the tablet. Modeled as a cheap **"smooth / erase"** editor action that
+  clears the document under the *same* docId — the opposite of clay's one-way carry-forward
+  *migration* (which mints a new document and archives/clears the old). Wax needs no migration
+  because you just wipe it and rewrite.
+- It **cannot be fired / made permanent** — there is no wax analogue of the fired-clay archive
+  (the same heat that would archive clay melts wax). Wax is inherently ephemeral; clay is the
+  path to permanence. This is the intended asymmetry.
+- Everything shared with clay — **stylus-in-offhand editing gate**, **line cap via
+  `ScribeDocumentPolicy`**, **Vertical-Rack storability**, **docId-on-item persistence** — is
+  identical and specced once below.
+
+Open wax-specific decisions (line cap vs clay's 3, melt = destroy vs smudge, crafting path,
+whether erase is a distinct action or reuses carry-forward-to-self) are collected under Open
+Questions and in the Clarifying-questions list.
+
+### What the tier adds over v2
+
+Together the two artifacts make the scratch tier the **first place v2's `docId` store is
+exercised from a second (and third) item type**, validating that the store is genuinely
+artifact-agnostic. On top of v2 the tier adds: (1) a **soft/fired (clay) lifecycle** modeled as
+a Core policy flag enforced server-side; (2) **contact damage** while held or dropped, keyed on
+**water for clay** and **heat/lava for wax** (the same `OnHeldIdle`/`OnGroundIdle` seam, inverse
+predicate); (3) an **offhand-tool gate** on editing (shared); and (4) an **in-place erase** op
+for wax alongside clay's **carry-forward migration** — both pure Core document operations.
 
 ## VS API hooks
 
@@ -54,7 +123,7 @@ inline. **Everything v2 already established (held-item GUI open, `ItemStack.Attr
 `ItemSlot.MarkDirty`, `SaveGame` store, `docId` packets) is inherited unchanged and not
 re-listed here — see `v2-notebook.md`.**
 
-### Making the tablet: clayforming a flat slab
+### Making the clay tablet: clayforming a flat slab
 
 - **Clayforming is a JSON `clayforming` recipe** resolved into `ClayFormingRecipe :
   LayeredVoxelRecipe<ClayFormingRecipe>` (confirmed: `ClayFormingRecipe` decompile — 16
@@ -74,6 +143,48 @@ re-listed here — see `v2-notebook.md`.**
 - **Implication:** creating a soft tablet needs **only a JSON recipe file** plus the item def —
   no C# for the crafting step. The clayformed output is our soft-tablet `Item` (see below).
 
+### Making the wax tablet: beeswax on a wooden frame
+
+Wax comes from bees, not clay, and is worked cold-by-hand/warm rather than clayformed. What the
+vanilla assets confirm about the wax supply chain and how wax is "used up" into other items:
+
+- **`game:beeswax` is a real vanilla item** (confirmed: shipped
+  `assets/survival/itemtypes/resource/beeswax.json`, `code: "beeswax"`, `maxstacksize: 32`, no
+  custom `class` — a plain item). Its production chain is confirmed by
+  `assets/survival/itemtypes/resource/honeycomb.json`: honeycomb has a **`Squeezable`** behavior
+  (`returnStacks: [{ code: "beeswax" }]`, `liquidItemCode: "honeyportion"`) **and**
+  `juiceableProperties` (`returnStack: { code: "beeswax", stacksize: 5 }`, via a fruit press) —
+  i.e. skep/beehive → honeycomb → **squeeze/press out honey, keep the beeswax**. So beeswax is a
+  reliably obtainable stone-age-adjacent material (bees are early-game), which fits a scratch-
+  tier artifact.
+- **Vanilla precedent for "consume beeswax into a shaped item" is a grid/cooking recipe, not a
+  mold.** Confirmed shipped recipes that turn `beeswax` into something: `recipes/cooking/candle.json`
+  (a **firepit cooking recipe**: `3 beeswax + 1 flaxfibers → candle`, using
+  `ingredients`/`cooksInto`), `recipes/grid/waxedcheese.json` (a **shapeless grid recipe**:
+  `rawcheese-salted + beeswax → rawcheese-waxed`), plus bow/leather recipes. There is **no
+  vanilla "pour wax into an ingot-style mold" mechanic** — wax is always just an ingredient
+  consumed by a grid or cooking recipe. **So the plausible, precedent-backed wax-tablet crafting
+  path is a plain grid recipe: `beeswax + a wooden frame/board → wax tablet`** (e.g. beeswax over
+  a plank/`game:board-*` or a small crafted "tablet frame"), exactly the shape of `waxedcheese`
+  (wax applied to a substrate). No clayforming, no firing, no new crafting mechanic — one JSON
+  grid recipe, like the notebook's.
+- **Why a wooden frame, not solid wax:** historically a wax tablet is a recessed wooden board
+  filled with a thin wax layer — the wood gives it rigidity and is what survives; the wax is the
+  erasable surface. Modeling it as `wood frame + beeswax` also gives the heat-fragility a natural
+  fiction (the wax melts out of the frame; the empty frame could even be a "blank tablet" the
+  player re-waxes — an optional reuse loop, open question).
+- **Confirmed non-behavior:** vanilla beeswax has **no melting/heat reaction of its own** —
+  `beeswax.json` defines no `combustibleProps`, no temperature behavior; it is an inert stacking
+  item (the wiki confirms no heat behavior). The vanilla `candle` item *does* have
+  `combustibleProps { burnTemperature: 700, burnDuration: 8 }` (it burns *as fuel*), but that is
+  a candle being consumed as a light/fuel source, **not** wax "melting away." **So wax-tablet
+  heat-fragility is entirely our own mechanic — there is no vanilla melt behavior to inherit for
+  free** (contrast clay's water-fragility, which gets `dissolveInWater` for free). See the
+  heat-fragility subsection below for the hooks.
+- **Implication:** creating a wax tablet needs **only a JSON grid recipe** plus the item def and
+  a wooden-frame ingredient (either a vanilla board or a tiny crafted frame item) — no C# for the
+  crafting step, same as clay. The heat-melt behavior *is* custom C# (below).
+
 ### Editing gate: stylus in the offhand
 
 - **`EntityAgent.LeftHandItemSlot`** is the offhand slot (confirmed: `EntityAgent` decompile
@@ -91,7 +202,11 @@ re-listed here — see `v2-notebook.md`.**
   falling through to the read dialog when no writing tool is present). This gives the tablet a
   natural read/edit split driven by the offhand tool rather than a Shift modifier.
 
-### Water-contact fragility (the tier's drawback)
+### Water-contact fragility (the CLAY drawback)
+
+> Applies to the **soft clay tablet only**. The **wax tablet opts out entirely** — it sets no
+> `dissolveInWater` and overrides no water-damage tick, so all of the below is simply absent for
+> wax (its inverse drawback is heat, next subsection). The fired clay tablet also opts out.
 
 - **Held-while-soft:** `CollectibleObject.OnHeldIdle(ItemSlot slot, EntityAgent byEntity)` is
   called every tick while the item is held (confirmed: `CollectibleObject` decompile line 1315,
@@ -111,7 +226,62 @@ re-listed here — see `v2-notebook.md`.**
   `docId` store entry" bookkeeping when it dies.
 - **Fired tablet sets neither** — it is not water-fragile (asymmetric fragility, below).
 
-### Firing: soft → permanent read-only archive
+### Heat-contact fragility (the WAX drawback — the inverse of clay's)
+
+> Applies to the **wax tablet only**. This is the mechanic that keeps wax from being strictly
+> better than clay: wax shrugs off water but **melts near heat**, and (unlike fired clay) can
+> never be made permanent. Everything here is **our own C#** — there is no vanilla "wax melts"
+> behavior to inherit (confirmed above: beeswax has no `combustibleProps`/temperature behavior),
+> so this is the mirror of clay's water path built by hand.
+
+- **The same two idle hooks clay uses for water, keyed on heat instead.** Reuse
+  `CollectibleObject.OnHeldIdle` (held, every tick — confirmed empty virtual, `CollectibleObject`
+  line ~1315) and `CollectibleObject.OnGroundIdle` (dropped, every tick — confirmed line ~1327),
+  server-side only, but branch on **heat/lava** predicates rather than liquid ones.
+- **Confirmed heat/proximity signals on the holder entity** (all confirmed public fields on the
+  base `Entity` — `VintagestoryLib` decompile of `Vintagestory.API.Common.Entities.Entity`):
+  **`Entity.InLava`** (line 138, `public bool InLava;`), **`Entity.IsOnFire`** (line 321, a
+  `WatchedAttributes.GetBool("onFire")`-backed property — true when the entity itself is
+  burning), and the timing fields `InLavaBeginTotalMs` / `OnFireBeginTotalMs`. **So "wax near
+  extreme heat" is confirmable for the two unambiguous cases: the holder is in lava, or the
+  holder is on fire.** These are the direct inverse of the `Swimming`/`FeetInLiquid` reads clay
+  uses for water. Gate on `api.Side == Server`, same as clay.
+- **Proximity to a fire block (firepit/forge/torch) without being *in* lava or *on* fire is NOT
+  a confirmed free signal — mark VERIFY.** There is no confirmed collectible callback that says
+  "you are standing next to a hot block." Two candidate approaches, both needing a spike:
+  - *(a) Ambient/block scan (VERIFY):* in the server-side idle tick, scan the few blocks around
+    `byEntity.Pos`/`entityItem.Pos` for a lit heat source (firepit lit, forge, lava, magma) and
+    treat proximity as a melt tick. Cheap enough at a low tick cadence but needs confirming which
+    block/behavior exposes "is currently hot/lit."
+  - *(b) Item temperature (VERIFY the source of heat):* `CollectibleObject.GetTemperature(world,
+    stack)` / `HasTemperature` are **confirmed** (`CollectibleObject` lines ~3017/3059) and read
+    a `"temperature"` tree attribute; `GlobalConstants.TooHotToTouchTemperature == 250` and
+    `CollectibleDefaultTemperature == 20` are **confirmed** constants. Melt could trigger when
+    the *stack's own temperature* rises above a wax melt point. **BUT** what confirmedly raises a
+    held/dropped item's temperature is a **firepit/kiln smelting slot** (`BlockEntityFirepit`
+    heats items placed *in* it), not mere proximity — a wax tablet in the hotbar near a fire is
+    not confirmed to gain temperature. So temperature-based melt is clean *if* the tablet is put
+    into/near a heat source that actually heats it; do not assume open-air proximity heats it.
+  **Recommendation:** ship the **confirmed** cases first (`InLava` and `IsOnFire` → melt), which
+  already deliver the "don't take your wax notes into a volcano / while burning" fiction, and
+  treat firepit/forge *proximity* as a VERIFY follow-up once a spike confirms a heat signal.
+- **What "melt" does** (mirror of clay's water-damage options; open question, pick one):
+  1. **Warn only** — particles + a one-time "your wax is softening!" message, no data loss.
+  2. **Progressive smudge** — on a hit, blank the last block's text via the same Core op clay's
+     water-smudge uses (the writing "runs" as the wax softens). Symmetric with clay.
+  3. **Destroy** — on the rare hit, delete the wax-tablet stack and orphan its `docId` (same
+     orphan class as clay-drop and as v2 open-question 3). Thematically: the wax runs off the
+     frame entirely.
+  This spec leans **progressive smudge for `IsOnFire`, destroy for `InLava`** (lava is
+  catastrophic; being on fire is a warning you can act on), exactly paralleling clay's "smudge
+  when swimming, destroy when dropped in water" lean — flagged for the user.
+- **No `dissolveInWater`, no water tick** on wax — it is explicitly water-immune (the required
+  contrast). A wax tablet dropped in water just floats/sits like any item and keeps its document.
+
+### Firing: soft → permanent read-only archive (CLAY only)
+
+> Wax has **no firing path** — it cannot be made permanent (the heat that fires clay melts wax).
+> This subsection is clay-only.
 
 - **Firing transforms an item via `CombustibleProperties.SmeltedStack` with
   `SmeltingType == EnumSmeltType.Fire`** (confirmed: `EnumSmeltType.Fire` = "must be fired in a
@@ -147,6 +317,9 @@ re-listed here — see `v2-notebook.md`.**
   add `scrollrackable: true` (and an `onscrollrackTransform`) to the tablet item JSON. Zero C#,
   zero new block.** The `docId` on `ItemStack.Attributes` survives being placed in the rack (the
   rack stores the whole `ItemStack`), so a racked tablet keeps its document.
+- **Applies to the wax tablet too** — add the same `scrollrackable: true` +
+  `onscrollrackTransform` to the wax item JSON. Zero extra C#; the wax tablet's docId survives
+  racking identically. (Racking is a shared, material-agnostic behavior.)
 
 ### Stamping / animation / sound (cross-reference only — parked)
 
@@ -186,6 +359,10 @@ public sealed class ScribeDocumentPolicy
     public static readonly ScribeDocumentPolicy Unbounded = new();
     public static readonly ScribeDocumentPolicy ClayTabletSoft = new() { MaxBlocks = 3 };
     public static readonly ScribeDocumentPolicy ClayTabletFired = new() { MaxBlocks = 3, ReadOnly = true };
+    // Wax reuses the exact same policy shape — it is line-capped and editable, never read-only
+    // (wax can't be "fired"/locked). Its cap MAY differ from clay's 3 (open question — wax
+    // tablets historically held more, being erasable; shown here as 4, decide at design time).
+    public static readonly ScribeDocumentPolicy WaxTablet = new() { MaxBlocks = 4 };
 
     /// True if adding one more block is allowed under this policy.
     public bool CanAdd(ScribeDocument doc) => !ReadOnly && (MaxBlocks is null || doc.Blocks.Count < MaxBlocks);
@@ -221,50 +398,99 @@ dropped, cap respected) with no game install — exactly the kind of rule the Co
 exists to protect. "Clear the old one" is just constructing an empty `ScribeDocument` and
 `store.Save`-ing it under the old `docId` (Mod side).
 
-> Deliberately **not** in Core: any notion of "fired", "clay", "water", "stylus", or "rack".
-> `ReadOnly` is expressed abstractly as a policy flag; *why* a document is read-only (because
-> its tablet was fired) is a Mod concern. Core only knows "this document may not be mutated."
+**2b. Wax's in-place erase is even simpler — and needs no new Core API.** Where clay's carry-
+forward *mints a new document* under a new docId (one-way migration to a fresh tablet), wax is
+*erased in place*: the player smooths the wax flat and the **same** tablet (same docId) now holds
+an empty document. That is just `store.Save(docId, new ScribeDocument())` on the Mod side — no
+migration, no new docId, no Core helper beyond constructing an empty document. So the Core
+surface for the two artifacts is: **`CarryForwardUndone` (clay migration)** and **plain
+empty-document save (wax erase)** — the erase reuses existing Core, deliberately. (If a future
+"undo the last erase" is ever wanted it would need a Core-side history, out of scope here.)
+
+> Deliberately **not** in Core: any notion of "fired", "clay", "wax", "water", "heat", "melt",
+> "stylus", "erase", or "rack". `ReadOnly` is expressed abstractly as a policy flag; *why* a
+> document is read-only (because its clay tablet was fired) is a Mod concern; *why* one is erased
+> (the player smoothed the wax) is likewise Mod-side. Core only knows "this document may/may not
+> be mutated" and "here are the undone tasks carried forward."
 
 ### Mod (`src/Mod/` — the VS API adapter)
 
-**Two item classes, or one class with a `fired` variant?** The soft and fired tablets are
-different collectibles (different attributes: soft has `writingTool`-gated editing +
-`dissolveInWater` + `combustibleProps`; fired has none of those and is read-only). The cleanest
-model is **one `variantgroups` axis `state: ["soft", "fired"]`** on a single item def backed by
-one C# class, branching on its own variant:
+**One tier-neutral class with a `material` axis, spanning clay and wax.** The three concrete
+artifacts (soft clay, fired clay, wax) share nearly all Mod logic — the docId open round-trip,
+the stylus gate, the row editor, rack storage — and differ only in a few branch points
+(water-damage vs heat-melt vs neither; fireable vs not; erasable vs migrate-only). Rather than a
+separate `ItemScribeClayTablet` and `ItemScribeWaxTablet` duplicating the open/idle plumbing,
+**rename the class to the tier-neutral `ItemScribeTablet`** and drive behavior off **two variant
+axes**:
+
+- `material: ["clay", "wax"]` — picks the fragility model + capabilities.
+- `state: ["soft", "fired"]` — **only meaningful for clay** (wax is always effectively "soft"
+  and has no fired state; its JSON simply omits/ignores the `state` axis or fixes it to a single
+  value — decide at design time whether wax is a separate item def with no `state` axis, or the
+  same def with `state` constrained; a separate `waxtablet.json` def with only a `material`
+  understanding is cleanest given wax's crafting path and attributes differ).
 
 ```csharp
-public sealed class ItemScribeClayTablet : Item   // registered "ScribeClayTablet"
+public sealed class ItemScribeTablet : Item   // registered "ScribeTablet" (was "ScribeClayTablet")
 {
-    private bool IsFired => Variant["state"] == "fired";   // RegistryObject.Variant, per ItemClay precedent
+    private bool IsWax   => Variant["material"] == "wax";
+    private bool IsClay  => Variant["material"] == "clay";
+    private bool IsFired => IsClay && Variant["state"] == "fired";   // wax is never fired
+    private bool IsReadOnly => IsFired;                              // only fired clay is read-only
 
-    // Reuses v2's DocIdAttributeKey = "scribeDocId" verbatim — same store, same key.
+    // Reuses v2's DocIdAttributeKey = "scribeDocId" verbatim — same store, same key, both materials.
+
+    private ScribeDocumentPolicy Policy =>
+        IsWax   ? ScribeDocumentPolicy.WaxTablet :
+        IsFired ? ScribeDocumentPolicy.ClayTabletFired :
+                  ScribeDocumentPolicy.ClayTabletSoft;
 
     public override void OnHeldInteractStart(ItemSlot slot, EntityAgent byEntity, /*...*/ ref EnumHandHandling handling)
     {
         // 1. PreventDefault.
         // 2. Read/lazily-alloc docId (server), same as ItemScribeNotebook.
         // 3. Decide mode:
-        //      fired  -> always read-only view.
-        //      soft   -> editable IFF ItemBook.isWritingTool(byEntity.LeftHandItemSlot); else read-only.
-        //    Send ScribeClayTabletOpenMessage { DocId, HotbarSlotId, WantEditor } where
-        //    WantEditor = !IsFired && hasStylus.
+        //      fired clay -> always read-only view (no stylus check).
+        //      soft clay / wax -> editable IFF ItemBook.isWritingTool(byEntity.LeftHandItemSlot); else read-only.
+        //    Send ScribeTabletOpenMessage { DocId, HotbarSlotId, WantEditor } where
+        //    WantEditor = !IsReadOnly && hasStylus.
     }
 
     public override void OnHeldIdle(ItemSlot slot, EntityAgent byEntity)
     {
-        // soft only, server only: if (byEntity.Swimming || byEntity.FeetInLiquid) -> water-damage tick (see Impl).
+        // server only. Branch on material:
+        //   soft clay -> if (byEntity.Swimming || byEntity.FeetInLiquid) -> WATER-damage tick.
+        //   wax       -> if (byEntity.InLava || byEntity.IsOnFire)       -> HEAT-melt tick (see Impl).
+        //   fired clay-> nothing.
     }
 
-    public override string GetHeldItemName(ItemStack stack) { /* "Clay tablet" / "Fired clay tablet (archive)" */ }
-    public override void GetHeldItemInfo(...) { /* task count; "Fire to make permanent"; "Wets out in water" */ }
+    public override void OnGroundIdle(EntityItem entityItem)
+    {
+        // wax: if (entityItem.Swimming) -> DO NOTHING (water-immune, the required contrast).
+        //      heat-melt-while-dropped keyed on InLava is optional (open question).
+        // soft clay gets dropped-in-water destroy for FREE via dissolveInWater JSON (no override needed).
+        base.OnGroundIdle(entityItem);
+    }
+
+    public override string GetHeldItemName(ItemStack stack) { /* "Clay tablet" / "Fired clay tablet (archive)" / "Wax tablet" */ }
+    public override void GetHeldItemInfo(...) {
+        /* task count; clay-soft: "Fire to make permanent", "Wets out in water";
+           clay-fired: "Permanent archive (read-only)";
+           wax: "Waterproof", "Melts near fire/lava", "Smooth to erase & reuse" */
+    }
 }
 ```
 
-Using the same class for both states keeps the `docId`/open/idle logic in one place; the two
-JSON variants differ only in the attributes listed above. (An `ItemClay`-style `Variant["state"]`
-read is the confirmed idiom — `ItemClay.OnHeldInteractStart` reads
-`((RegistryObject)this).Variant["type"]`.)
+Using one class keeps the docId/open/idle logic in one place; the JSON defs differ in attributes
+(clay-soft: `dissolveInWater` + `combustibleProps`; wax: neither, plus its heat behavior is code-
+side; wax's editor shows a "smooth/erase" action). An `ItemClay`-style `Variant[...]` read is the
+confirmed idiom (`ItemClay.OnHeldInteractStart` reads `((RegistryObject)this).Variant["type"]`).
+
+> **Naming note for the parent:** this renames the planned `ItemScribeClayTablet` →
+> `ItemScribeTablet` and the registry code `"ScribeClayTablet"` → `"ScribeTablet"`. Since no code
+> exists yet (this is a design spec), it is a pure naming decision, not a migration. If the parent
+> prefers to keep `ItemScribeClayTablet` and add a parallel `ItemScribeWaxTablet`, the shared
+> plumbing should be factored into a common base to avoid duplication — noted as a design choice.
 
 **Packets** — the notebook packets are **`docId`-addressed already**, so v3 either reuses them
 verbatim or adds thin tablet-named twins. Reuse is preferred (the tablet *is* a docId-backed held
@@ -272,9 +498,11 @@ document); the only new field the open message needs is which mode to open:
 
 ```csharp
 // Reuse ScribeNotebookOpenMessage / ...DocumentMessage / ...EditMessage from v2, OR add
-// ScribeClayTablet* twins if v3 wants to keep the item types cleanly separated. WantEditor
+// ScribeTablet* twins if v3 wants to keep the item types cleanly separated. WantEditor
 // already exists on the v2 open message (added "for symmetry"); the tablet is the feature that
-// finally uses it (fired=false + stylus present -> editor; else read-only).
+// finally uses it (readOnly=false + stylus present -> editor; else read-only). ONE set of
+// tablet packets covers BOTH clay and wax — the material never appears in the packet; the
+// server derives the policy from the stack's own variant, so wax adds NO new packet shape.
 ```
 
 No new packet *shape* is required. What **is** new is server-side policy enforcement on the edit

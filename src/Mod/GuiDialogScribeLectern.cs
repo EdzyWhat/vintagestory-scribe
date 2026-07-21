@@ -14,8 +14,9 @@ namespace Scribe;
 ///   single-editor lock): edits a private scratch copy, autosaved to the server on a throttled
 ///   tick while dirty.
 ///
-/// A <c>GuiDialogBlockEntity</c> rather than a plain <c>GuiDialog</c>, so the engine's own
-/// per-block-position dialog dedup and walk-away auto-close apply for free.
+/// A <c>GuiDialogBlockEntity</c> rather than a plain <c>GuiDialog</c>, for the engine's own
+/// per-block-position dialog dedup and walk-away auto-close. (The auto-close needs a range-check
+/// override for Creative mode -- see <see cref="IsInRangeOfBlock"/>.)
 /// </summary>
 public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 {
@@ -346,6 +347,38 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         }
 
         base.OnRenderGUI(deltaTime);
+    }
+
+    /// <summary>
+    /// The base <c>GuiDialogBlockEntity.OnFinalizeFrame</c> auto-closes the dialog (and, via our
+    /// <see cref="OnGuiClosed"/>, flushes the pending edit and releases the lock -- task 7.8) once
+    /// the player leaves <c>IsInRangeOfBlock</c>. But the base measures against the player's
+    /// <c>WorldData.PickingRange</c>, which the engine inflates to ~100 blocks in Creative mode
+    /// (the <c>EnumGameMode</c> switch sets <c>PickingRange = PreviousPickingRange</c>, default
+    /// 100). A creative player -- e.g. anyone who just placed the lectern from the creative
+    /// inventory -- could therefore walk hundreds of blocks and the dialog would never close.
+    /// Gate on the fixed survival interaction distance instead so walk-away auto-close fires in
+    /// every game mode. This mirrors the base's exact selection-box distance math (confirmed via
+    /// decompile), swapping only the mode-dependent range for <c>DefaultPickingRange</c>.
+    /// </summary>
+    public override bool IsInRangeOfBlock(BlockPos blockEntityPos)
+    {
+        Cuboidf[]? selectionBoxes = capi.World.BlockAccessor.GetBlock(blockEntityPos)
+            .GetSelectionBoxes(capi.World.BlockAccessor, blockEntityPos);
+        Vec3d eyePos = capi.World.Player.Entity.Pos.XYZ.Add(capi.World.Player.Entity.LocalEyePos);
+
+        double nearest = 99.0;
+        if (selectionBoxes != null)
+        {
+            foreach (Cuboidf box in selectionBoxes)
+            {
+                nearest = System.Math.Min(nearest, box.ToDouble()
+                    .Translate(blockEntityPos.X, blockEntityPos.InternalY, blockEntityPos.Z)
+                    .ShortestDistanceFrom(eyePos));
+            }
+        }
+
+        return nearest <= GlobalConstants.DefaultPickingRange + 0.5;
     }
 
     /// <summary>Set while a text-size drag is pending a recompose (see <see cref="OnMouseUp"/>).

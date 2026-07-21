@@ -56,11 +56,13 @@ age (the saw); anything past that is cosmetic.
 
 ## Near-term, actionable (not tied to a future tier)
 
-- **BUG — editor view doesn't auto-close on walk-away.** Playtest 2026-07-21 (TESTING.md
-  `9c04c5c7` / add-lectern-block 7.8): opening the editor and walking hundreds of blocks away
-  never closes the dialog; expected behavior is auto-close + force-flush the pending edit. The
-  range-check-and-close appears not to fire. A distinct defect in the existing dialog
-  lifecycle — not row-list-rework scope. Needs a code fix, then a retest of close + flush.
+- **~~BUG — editor view doesn't auto-close on walk-away~~ — fix applied 2026-07-21, awaiting
+  retest.** Playtest 2026-07-21 (TESTING.md `9c04c5c7` / add-lectern-block 7.8): opening the
+  editor and walking hundreds of blocks away never closed the dialog. Root cause (decompile): the
+  base auto-close gates on `IsInRangeOfBlock` → `WorldData.PickingRange`, which the engine
+  inflates to ~100 blocks in Creative mode — so the ~5-block survival threshold never applied to
+  a creative-placed lectern. Fixed by overriding `IsInRangeOfBlock` to use the fixed
+  `GlobalConstants.DefaultPickingRange`. Needs an in-game retest of close + flush (see TESTING.md).
 - **Lectern GUI polish** → `docs/specs/lectern-gui-polish.md`. Merges: face-the-player on
   placement, "Edit" → "Edit Tasks" relabel, damped icon-gutter widths at large text size,
   the side-rail option bar + fold-switch-into-toggle + skeuomorphic collapse control chain,

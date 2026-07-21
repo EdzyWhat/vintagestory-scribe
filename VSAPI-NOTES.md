@@ -99,6 +99,27 @@ state). Prefer a throttled hover-position log (`OnMouseMove`, logged via
 target and the chat log visible in the same frame — gives an unambiguous side-by-side
 without repeated clicking.
 
+**Symptom: a `GuiDialogBlockEntity` doesn't auto-close when the player walks away — but only
+in Creative mode (works in Survival).**
+
+The base `GuiDialogBlockEntity.OnFinalizeFrame` closes the dialog when `IsInRangeOfBlock`
+returns false — this is the "walk-away auto-close" you get "for free" by subclassing it. But
+`GuiDialogGeneric.IsInRangeOfBlock` measures the eye-to-nearest-selection-box distance against
+**`capi.World.Player.WorldData.PickingRange + 0.5`**, and the engine **inflates PickingRange to
+~100 blocks in Creative** (confirmed via decompile: the game-mode switch does
+`PickingRange = PreviousPickingRange` (default `100f`) when leaving Survival/Guest;
+`GlobalConstants.DefaultPickingRange` is `4.5`). So a creative player — e.g. anyone testing a
+block they just placed from the creative inventory — can walk ~100 blocks before the dialog
+closes, which reads as "never closes." Also note `IsInRangeOfBlock` starts `nearest = 99` and
+only lowers it if the block returns selection boxes; a block with no selection box would *always*
+read as out of range instead.
+
+**Fix pattern:** override `IsInRangeOfBlock(BlockPos)` on your dialog to reuse the base's exact
+selection-box distance math but gate on a fixed distance (`GlobalConstants.DefaultPickingRange`)
+instead of the mode-dependent `WorldData.PickingRange`, so walk-away close fires consistently in
+every game mode. See `GuiDialogScribeLectern.IsInRangeOfBlock`. (This is also the seam where
+walk-away edit-flush + lock-release happen, via the dialog's `OnGuiClosed`.)
+
 **Symptom: a row list needs to scroll instead of running off the bottom of a fixed-height
 dialog, or growing the dialog itself without bound.**
 
