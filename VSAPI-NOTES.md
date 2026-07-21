@@ -470,6 +470,28 @@ in a kiln (blank/orphaned archive).** `BlockEntityPitKiln.OnFired()` (VSSurvival
 use a grid recipe with `GridRecipeIngredient.CopyAttributesFrom`, or a Scribe-owned firing
 interaction that copies the attributes onto the output stack explicitly.
 
+**Beeswax & wax-item facts (v1.22.x, confirmed from shipped assets — for the wax tablet tier).**
+`game:beeswax` is a plain inert item (`itemtypes/resource/beeswax.json`): `maxstacksize: 32`, **no
+`combustibleProps`, no temperature behavior** (nothing to melt). Supply chain: honeycomb
+(`itemtypes/resource/honeycomb.json`) has a `Squeezable` behavior (`returnStacks: [beeswax]`,
+`liquidItemCode: honeyportion`) and `juiceableProperties` (`returnStack: beeswax x5` via fruit
+press) — beehive → honeycomb → squeeze/press out honey, keep the wax. Vanilla only ever *consumes*
+beeswax as a recipe ingredient (never a mold): `recipes/cooking/candle.json` (3 beeswax + 1
+flaxfibers → candle) and `recipes/grid/waxedcheese.json`. The candle's `combustibleProps
+{ burnTemperature: 700 }` is it burning *as fuel*, not wax melting.
+
+**Nothing destroys held/inventory items when the player catches fire.** `Entity.ApplyFireDamage`
+(VintagestoryLib) only deals 0.5 HP/s `EnumDamageType.Fire` to the entity; the combust-destroy
+path `DieInLava` → `Die(Combusted)` is entity-level and explicitly excludes `EntityPlayer`. Item
+heat/fire state fields on `Entity`: `public bool InLava;`, `InLavaBeginTotalMs`/
+`OnFireBeginTotalMs`, `bool IsOnFire` (backed by `WatchedAttributes.GetBool("onFire")`). Item
+temperature API exists (`CollectibleObject.GetTemperature`/`HasTemperature`,
+`GlobalConstants.TooHotToTouchTemperature == 250`, `CollectibleDefaultTemperature == 20`) but the
+only *confirmed* way to raise a held/dropped item's temperature is a firepit/kiln smelt slot —
+**open-air proximity heating a hotbar item is NOT confirmed** (verify before any proximity-heat
+mechanic). Consequence: a "player on fire ruins your wax tablet" mechanic has no vanilla
+precedent — the wax tablet is instead balanced by material cost + no path to a fired archive.
+
 ## Always-on HUD overlays and hotkeys
 
 **Question: how do you draw an always-on, per-tick-updated HUD overlay, and register a

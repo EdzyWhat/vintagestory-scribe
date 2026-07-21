@@ -37,11 +37,19 @@ age (the saw); anything past that is cosmetic.
   prerequisite is delivered by the row-list rework (v2 must wait for **S2**); and the
   single-editor lock does **not** carry over (a held stack has one holder — matches vanilla
   `ItemBook`, which uses no lock).
-- **v3 — Clay tablet (scratch)** → `docs/specs/v3-clay-tablet.md`. Soft/unfired item, 3-line
-  UI, clayform-a-flat-slab, stylus in offhand, wets out in water, rack-storable. Mostly JSON
-  (clayforming pattern, `dissolveInWater`, `scrollrackable`, stylus = `writingTool` item). The
-  fire-to-permanent-archive trade-off has a real gotcha (kiln firing drops stack attributes —
-  see the spec and VSAPI-NOTES).
+- **v3 — Scratch tier: clay & wax tablets** → `docs/specs/v3-clay-tablet.md` (retitled in place;
+  the filename is unchanged so existing pointers still resolve). Two sibling artifacts:
+  - **Clay tablet:** soft/unfired item, 3-line UI, clayform-a-flat-slab, stylus in offhand,
+    **wets out in water**, rack-storable. Mostly JSON (clayforming pattern, `dissolveInWater`,
+    `scrollrackable`, stylus = `writingTool` item). The fire-to-permanent-archive trade-off has a
+    real gotcha (kiln firing drops stack attributes — see the spec and VSAPI-NOTES).
+  - **Wax tablet (addendum 2026-07-21):** the reusable Roman-era surface. **Does NOT wet out in
+    water** (water-immune by simply omitting clay's water code). Balanced against clay not by an
+    invented punishment but by material cost (beekeeping-gated beeswax) and **no path to a
+    permanent fired archive** — wax is erasable/reusable (smooth-flat = reset) but never
+    permanent. The two tablets are mutually non-dominating. (A heat/melt-fragility inverse was
+    considered and cut: nothing in vanilla damages a held item when the player is on fire, and
+    open-air proximity heating of a hotbar item is unconfirmed — see VSAPI-NOTES.)
 - **v4 — Writing desk (organization)** → `docs/specs/v4-writing-desk.md`. Private owner-gated
   block; consolidates notes + categories; **kanban tabs** (Active / Backlog / Completed) as
   the fuller home for the completed-task funnel. Also the home for the **faction/shared
