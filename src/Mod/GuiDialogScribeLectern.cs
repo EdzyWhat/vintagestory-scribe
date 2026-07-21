@@ -577,9 +577,15 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // regardless of the real scroll position -- isComposingRowList suppresses that spurious
         // call so it can't snap the list back to the top or trigger a re-entrant recompose. The
         // real scroll position is reapplied right after via CurrentYPosition's public setter (no
-        // callback re-entrancy) so the thumb sits at the right spot. The content parent is NOT
-        // shifted (fixedY stays 0): rows are composed at a viewport-relative Y, so a parent shift
-        // on top of that would double-offset them (design.md Decision 4, third correction).
+        // callback re-entrancy) so the thumb sits at the right spot.
+        //
+        // This method only positions the THUMB; it does not itself shift the content parent. The
+        // two views then differ on how the rows follow (row-list-rework S1): the EDITOR view leaves
+        // fixedY at 0 and bakes rows at a viewport-relative Y (a parent shift on top of that would
+        // double-offset them -- design.md Decision 4, third correction), whereas the READ view sets
+        // rowListContentBounds.fixedY = -scrollValue itself right after calling this (native-clip
+        // path), since its ScribeRowElements are composed at absolute Y. Keep that read-view shift
+        // at the ComposeReadView call site, not here, so this shared helper stays view-agnostic.
         isComposingRowList = true;
         var scrollbar = (ScribeRowListScrollbar)SingleComposer.GetScrollbar("rowListScrollbar");
         scrollbar.RowStep = clientConfig.TaskRowHeight * clientConfig.TextSizeScale;

@@ -134,6 +134,15 @@ age (the saw); anything past that is cosmetic.
   Per playtesting feedback the default range was retuned to 20%–120% (`MaxTextSizePercent`
   lowered from 300 to 120) since the user wanted smaller fonts, not larger; both bounds stay
   editable in `scribe-client-config.json`.
+- **Lectern faces a fixed direction when placed; should face the placing player.** From
+  playtesting (2026-07-21): the block always places in the same orientation regardless of which
+  way the player faces, so the book can end up facing away. Expected (and standard for the
+  vanilla lectern): orient on placement so the book faces the player, i.e. derive the block's
+  horizontal facing from the player's yaw in `OnBlockInteractStart`/placement (vanilla blocks do
+  this via a `horizontalorientation` variant group + `BlockBehaviorHorizontalOrientable`, or by
+  setting the placed block's facing from `byPlayer`'s look direction). Small block-definition/
+  placement change in `BlockScribeLectern`; check how the vanilla `Block` "aged book lectern"
+  clutter shape handles orientation before inventing one.
 - Lectern model polish: swap the vanilla book shape for loose-leaf paper + a quill/pen,
   so the model reads as "editing the paper here" rather than managing/taking a book.
 - Freeform text-section blocks (`ScribeBlockKind.Text`, `ScribeDocument.AddTextSection`) are
