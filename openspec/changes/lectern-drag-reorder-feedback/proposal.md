@@ -1,3 +1,8 @@
+> **ON HOLD (2026-07-20):** folded into the `lectern-row-list-rework` exploration — the
+> lift-ghost/insertion-indicator/drop-settle here will build on the unified custom-drawn row
+> infrastructure that exploration is scoping, rather than on the current rows. Do not
+> implement standalone; revisit after that exploration resolves.
+
 ## Why
 
 The lectern editor already supports mouse-drag reordering of task/note rows, but it gives
