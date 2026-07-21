@@ -159,15 +159,22 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       - **Still broken 2026-07-21** (playtest report 2026-07-21T08-13-42): the editor view never
         auto-closes on walk-away — the tester walked hundreds of blocks and the dialog stayed
         open, so the flush half of the test couldn't even be reached.
-      - **Fix applied 2026-07-21 (awaiting retest):** root cause found by decompile — the base
-        `GuiDialogBlockEntity.OnFinalizeFrame` auto-close gates on `IsInRangeOfBlock`, which
-        measures against the player's `WorldData.PickingRange`; the engine inflates that to ~100
-        blocks in Creative mode (the tester placed the lectern from creative inventory), so the
-        close threshold was ~100 blocks instead of survival's ~5 and effectively never triggered.
-        `GuiDialogScribeLectern.IsInRangeOfBlock` now overrides the base to gate on the fixed
-        `GlobalConstants.DefaultPickingRange` (~4.5) in all game modes. Builds clean, 35/35 Core
-        tests pass. **Retest needed:** in Creative, open the editor, walk ~6+ blocks away, confirm
-        the dialog auto-closes AND the pending edit was flushed (reopen and see it persisted).
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T09-09-47, Creative): the fix works —
+        opening the editor (or read view) near a lectern and walking away now auto-closes the
+        dialog as expected, AND the contained text is saved. Root cause was the base
+        `GuiDialogBlockEntity.OnFinalizeFrame` auto-close gating on `IsInRangeOfBlock` →
+        `WorldData.PickingRange`, which the engine inflates to ~100 blocks in Creative;
+        `GuiDialogScribeLectern.IsInRangeOfBlock` now overrides it to the fixed
+        `GlobalConstants.DefaultPickingRange`.
+      - *Known accepted Creative-only quirk (not fixing — user 2026-07-21):* because Creative lets
+        you raycast-open a lectern from up to ~100 blocks, opening one from beyond the ~5-block
+        close threshold makes it flash open then immediately auto-close. Harmless; Creative isn't
+        the mod's intended endpoint.
+      - *Survival impact (verified by analysis, not yet in-game):* survival's block-open reach is
+        `PickingRange` ≈ 4.5, which is *inside* the 5.0 close threshold (`DefaultPickingRange + 0.5`),
+        so survival never flash-closes and behaves exactly as vanilla block-entity dialogs do — the
+        override just hardcodes the value survival already uses. A quick survival open/walk-away
+        would confirm empirically, but the math shows no regression.
 - [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
       each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
       and that when one player edits, the other sees the change appear live in their read view

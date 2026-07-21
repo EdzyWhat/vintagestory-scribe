@@ -64,13 +64,15 @@ age (the saw); anything past that is cosmetic.
 
 ## Near-term, actionable (not tied to a future tier)
 
-- **~~BUG — editor view doesn't auto-close on walk-away~~ — fix applied 2026-07-21, awaiting
-  retest.** Playtest 2026-07-21 (TESTING.md `9c04c5c7` / add-lectern-block 7.8): opening the
-  editor and walking hundreds of blocks away never closed the dialog. Root cause (decompile): the
-  base auto-close gates on `IsInRangeOfBlock` → `WorldData.PickingRange`, which the engine
-  inflates to ~100 blocks in Creative mode — so the ~5-block survival threshold never applied to
-  a creative-placed lectern. Fixed by overriding `IsInRangeOfBlock` to use the fixed
-  `GlobalConstants.DefaultPickingRange`. Needs an in-game retest of close + flush (see TESTING.md).
+- **~~BUG — editor view doesn't auto-close on walk-away~~ — FIXED & confirmed 2026-07-21.**
+  Playtest confirmed (TESTING.md `9c04c5c7` / add-lectern-block 7.8): editor/read views now
+  auto-close on walk-away and the edit is saved. Root cause (decompile): the base auto-close gated
+  on `IsInRangeOfBlock` → `WorldData.PickingRange`, which the engine inflates to ~100 blocks in
+  Creative — so the ~5-block survival threshold never applied to a creative-placed lectern. Fixed
+  by overriding `IsInRangeOfBlock` to use the fixed `GlobalConstants.DefaultPickingRange`. Known
+  accepted Creative-only quirk left as-is: opening a lectern from beyond ~5 blocks (possible only
+  in Creative's inflated reach) flashes it open then auto-closes — harmless, not the mod's
+  intended endpoint. Survival is unaffected by analysis (open-reach 4.5 < close threshold 5.0).
 - **Lectern GUI polish** → `docs/specs/lectern-gui-polish.md`. Merges: face-the-player on
   placement, "Edit" → "Edit Tasks" relabel, damped icon-gutter widths at large text size,
   the side-rail option bar + fold-switch-into-toggle + skeuomorphic collapse control chain,
