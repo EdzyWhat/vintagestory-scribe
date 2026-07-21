@@ -2,6 +2,13 @@
 
 **Status:** exploring (not yet an OpenSpec change). Created 2026-07-20.
 
+> **Temporary holding pen (decided 2026-07-20).** OpenSpec has no native "exploration"
+> artifact — the `spec-driven` schema defines only proposal / specs / design / tasks. This is
+> therefore a plain repo doc, kept only while the exploration is still fluid. When we open the
+> change, its convergent content migrates into that change's `proposal.md` and `design.md`
+> (especially design's "Decisions" and "Open Questions" sections, which exist for exactly this),
+> and **this file is deleted**. Do not treat it as a durable spec.
+
 ## The through-line
 
 Several separate threads all converge on one architectural move — **replace the lectern's
@@ -45,19 +52,57 @@ one live text input, which sidesteps the `GlScissorFlag(false)` multi-input scis
   ghost/indicator/drop-settle will build on this row infrastructure.
 - **Both read and edit views** get reworked onto the shared row list (not edit-only).
 
-## Open questions to resolve before an OpenSpec proposal
+## Resolved decisions (2026-07-20, scoping conversation)
 
-- Read view and editor view on the **same** custom row element with interactivity toggled, or a
-  shared base with two thin subclasses? (Research leaned: read view could even be a single
-  `GuiElementRichtext`, but that diverges from "one shared renderer" — weigh unification vs.
-  reusing a native element.)
-- Edit-in-place: how the single overlaid live text field is positioned/focused/committed as the
-  user moves between rows; interaction with Tab/Enter (see ROADMAP "Tab/Shift+Tab" idea).
-- Custom checkbox visual (folds in the stamp/erase ROADMAP item — decide how much of that lands
-  here vs. later).
-- Lined-paper aesthetic specifics (ruled line style, spacing, how it reads against the parchment
-  backdrop).
-- Scope boundary: how much of this is one OpenSpec change vs. a staged sequence.
+- **Architecture: one `ScribeRowElement` with a mode flag** (read vs. edit), NOT a base +
+  subclasses. Subclassing would re-fork the "glued-together / different sizes" drift we're
+  killing. One element draws the shared skeleton; edit mode lights up interactive zones.
+- **Edit-in-place = one shared floating input.** The row element draws a static text *label*
+  per frame; on focus, the ONE real `GuiElementTextInput` is repositioned onto the focused row
+  and that row **suppresses drawing its own text label for that frame** ("blank the zone" =
+  skip painting those pixels, NOT clearing/deleting data — `block.text` is untouched). Avoids a
+  double-draw and the only-ever-one-live-input sidesteps the multi-input `GlScissorFlag(false)`
+  clobber. Handoff is invisible iff label and input share baseline/font/x-offset (see #1).
+- **#1 Baseline alignment → Option A: one shared `RowTextLayout` metric.** A single helper
+  computes x-offset, baseline Y, font size once; BOTH the label draw and the input placement
+  read from it. Structural single-source-of-truth, not tuned-until-it-looks-right. This is also
+  the layout authority the checkbox, gutters, and ruling all key off.
+- **#2 Ruling → Option B, hairline (solid, not dotted).** The rule is a **real structural part
+  of the row**, not a cosmetic afterthought — so it can be swapped for an **image** later. Small
+  but reasonable padding around it, and that padding **scales with font size**. The ruling
+  **scrolls with the rows** (not fixed preprinted lines). Color/alpha/thickness = config knobs.
+- **#3 Checkbox → Option A: clean custom glyph now, animation hook later.** Replace the gamey
+  `GuiElementSwitch` with our own drawn glyph; leave a clearly-marked seam for the parked
+  stamp/erase animation (deferred to S4).
+- **#4 Read-mode interactivity → Option A (scoped): the read-mode checkbox IS interactive**
+  (click to toggle done). NOTHING else in read mode is interactive — no editing, no drag, no
+  hover actions. All other mutation stays in edit mode.
+- **#5 Edit navigation → Option B+ : Enter advances / Shift+Tab retreats between rows** (Enter
+  and blur commit; Esc reverts to stored string). PLUS richer in-field caret conventions the
+  user wants: Cmd/Ctrl+Arrow to line start/end, Alt/Option+Arrow to skip by word, and Shift with
+  any of those to extend selection. **See open risk below — native support unverified.**
+- **#6 Scope → Option B: staged sequence**, each independently shippable + Mac-playtestable:
+  - **S1** — `ScribeRowElement` + read view: custom rows, ruled lines, real interactive-pass
+    clipping (this alone fixes the original scroll-pop), custom checkbox glyph, interactive
+    read-mode checkbox. Prove the aesthetic on the lower-risk view first.
+    **S1 must seed fake/sample lectern content** so there's something realistic to test against.
+  - **S2** — edit-in-place: floating input, zone-blanking, `RowTextLayout` alignment, Enter/
+    Shift+Tab nav + caret conventions; retire the old editor view.
+  - **S3** — unhold `lectern-drag-reorder-feedback`; build lift-ghost/indicator on landed rows.
+  - **S4** — checkbox stamp/erase animation (fills the S3-era hook).
+
+## Open questions / risks still to resolve
+
+- **#5 caret conventions — native support UNVERIFIED (S2 risk).** VS `GuiElementTextInput` /
+  `GuiElementTextArea` may not natively support Cmd/Ctrl+Arrow, Alt/Option word-skip, or
+  Shift-extend-selection. Before committing S2's spec, investigate what the base element handles
+  vs. what we'd have to subclass/reimplement (and whether cross-platform Cmd-vs-Ctrl is even
+  surfaced by the engine's key events). Decompile `GuiElementEditableTextBase` if the wiki/source
+  is thin — and record findings in `VSAPI-NOTES.md`.
+- **Fixed vs. scrolling ruling** — resolved to scroll-with-rows for now; revisit only if the
+  future "replace rule with an image" idea wants fixed preprinted lines.
+- Exact seed-content shape for S1 testing (how many rows, mix of tasks/notes, long lines to
+  stress wrapping/clipping) — decide when proposing S1.
 
 ---
 
