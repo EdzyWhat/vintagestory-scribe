@@ -768,6 +768,19 @@ asymmetry** (clay: cheap + archivable but water-fragile; wax: pricey + reusable 
 never permanent) rather than by stacking punishments. Its `ScribeDocumentPolicy` (`ReadOnly`,
 `MaxBlocks`) is reusable by any future capacity-limited or archived artifact.
 
+**Font supplier:** the clay tablet's **cuneiform-style stamped typeface** is specced in
+`presentation-and-fonts.md` (item 3), which sequences the cuneiform face to land *with* v3. Pull
+the face selection + `FreeTypeFontFace` loading from that spec when v3 is proposed rather than
+re-deriving it; it's gated on a font-license clearance (and confirm "stylized Latin wedge-letter"
+vs. actual cuneiform-Unicode substitution — an open question in that spec).
+
+**Note on `ScribeDocumentPolicy.ReadOnly`:** this is a *document-level* read-only (a fired tablet
+is wholly immutable), which is distinct from the *per-block* `ReadOnly` primitive that
+`docs/specs/README.md` → Shared Core-model conventions #3 designates for chronicle/guestbook
+entries. Both can coexist (a fired tablet is read-only as a whole; a guestbook has read-only
+blocks in an otherwise-appendable doc), but when either lands, keep them as two clearly-named
+concepts rather than one overloaded flag.
+
 ## Open questions
 
 1. **Does "wets out" destroy the document or just block/erode it?** This spec leans: dropped-in-

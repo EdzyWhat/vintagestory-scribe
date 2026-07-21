@@ -349,6 +349,11 @@ feedback) and S4 (checkbox animation) are polish and not blockers.
 `docId` store + held-item GUI plumbing are explicitly reused by **v3 (clay tablet)** and are the
 substrate for v5 (backpack collection) and the drop-on-death immersion hook.
 
+**Font supplier:** the notebook/book **rustic-script typeface** is specced in
+`presentation-and-fonts.md` (item 3), which sequences the rustic face to land *with* v2. When
+v2 is proposed, pull the font-face selection + `FreeTypeFontFace` loading from that spec rather
+than re-deriving it here; it's gated on a font-license clearance called out there.
+
 ## Open questions
 
 1. **One store or two?** Should the notebook's `SaveGame` document store and any future

@@ -64,6 +64,14 @@ age (the saw); anything past that is cosmetic.
 
 ## Near-term, actionable (not tied to a future tier)
 
+- **Codec version-aware read migration (standalone Core change).** *(Decided 2026-07-21.)*
+  Today `ScribeDocumentCodec` hard-rejects any `Version` ≠ current; before any feature bumps the
+  version (v6 signatures/policy, chronicle stamps/flags), extract the version-branched read + the
+  bump into **its own small, dependency-free Core change** — pure `src/Core/`, unit-tested with a
+  "reads an older blob" fixture, no game install needed. Doing it in isolation de-risks the one
+  place a mistake corrupts existing saves, and both v6 and chronicle then build on a codec that
+  already tolerates old layouts. See `docs/specs/README.md` → Shared Core-model conventions #1 for
+  the single-version-line rule (append fields in version order; never two "v4"s).
 - **~~BUG — editor view doesn't auto-close on walk-away~~ — FIXED & confirmed 2026-07-21.**
   Playtest confirmed (TESTING.md `9c04c5c7` / add-lectern-block 7.8): editor/read views now
   auto-close on walk-away and the edit is saved. Root cause (decompile): the base auto-close gated
@@ -89,6 +97,12 @@ supersedes the on-hold `lectern-drag-reorder-feedback` change's "rows don't shif
 custom per-tier fonts (cuneiform for the tablet, rustic script for books — loadable via
 FreeType, gated on a license check), and lightly-scoped handwriting-skill / item-aging visuals.
 All render-only; several need art/audio assets before they can start.
+
+**Sequencing vs. lectern-gui-polish** *(decided 2026-07-21)*: the S3/S4 animation work here and
+the chrome/layout items in `lectern-gui-polish.md` (gutter scaling, side rail, folded toggle,
+skeuomorphic ribbon) edit the same reworked post-S2 editor render code. Land the **GUI polish
+first** so the editor's final layout is settled, **then** add S3 (drag preview) / S4 (checkbox
+animation) on top of stable layout — otherwise the animations rebase over a moving chrome.
 
 ## Chronicle & integrations (later)
 
