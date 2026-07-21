@@ -405,6 +405,130 @@ Option arrow combos to the existing `MoveCursor(..., wholeWord)` / Home-End logi
 hand focus to the sibling row. Everything else is inherited. `OnCaretPositionChanged` is a
 public hook if the floating field needs to report caret pos back to the dialog.
 
+## Held-item writing (books / notebooks / tablets)
+
+> Facts gathered during the 2026-07-21 roadmap-exploration pass (see `docs/specs/`), from
+> decompiles + `anegostudios/vssurvivalmod` `Systems/WritingSystem/`. Not yet exercised by
+> shipped code — verify live when the notebook (v2) / clay tablet (v3) tiers are built.
+
+**Question: how does a HELD item open a GUI, store custom data, and persist
+server-authoritatively (the held-item analogue of the Sign block pattern)?**
+
+- **Open GUI:** override `CollectibleObject.OnHeldInteractStart(slot, byEntity, blockSel,
+  entitySel, firstEvent, ref handling)`; set `handling = EnumHandHandling.PreventDefault` to
+  consume the right-click. Construct/`TryOpen` the dialog **client-side only**
+  (`if (api.Side == EnumAppSide.Client)`) — held interactions fire on both sides. Shift modifier
+  via `byEntity.Controls.ShiftKey` (same as the lectern block path).
+- **Custom data:** `ItemStack.Attributes` (`ITreeAttribute`) is saved AND synchronized with the
+  stack (`SetString/GetString/SetBytes/GetBytes`). `ItemStack.TempAttributes` is NOT saved/synced
+  — never put persistent data there. `ItemSlot.MarkDirty()` is the held-item analogue of
+  `BlockEntity.MarkDirty()`.
+- **Server-side keyed store:** `ICoreServerAPI.WorldManager.SaveGame` (`ISaveGame`) exposes
+  `byte[] GetData(string key)` / `StoreData(string key, byte[])` (+ generic overloads). ~1 GB
+  budget for all savegame data combined. Scribe plan: key documents `"scribe:doc:" + docId`,
+  serialized with the existing `ScribeDocumentCodec`.
+- **Vanilla precedent = no lock.** `ItemBook` stores text directly on the stack
+  (`text`/`title`/`signedby`/`signedbyuid` attrs) with NO lock — `ModSystemEditableBook` keeps
+  only a transient `nowEditing` (playerUID→ItemSlot) map to route the save. A held stack has one
+  holder, so the lectern's position-based single-editor lock does not carry over to held items.
+- **Offhand tool gating (stylus):** offhand slot is `EntityAgent.LeftHandItemSlot`; vanilla
+  gates writable-book editing on `ItemBook.isWritingTool(LeftHandItemSlot)` →
+  `Collectible.Attributes.IsTrue("writingTool")`. A stylus is just an item with
+  `writingTool: true`.
+- **Vertical-rack storability:** `scrollrackable: true` collectible attribute (checked in
+  `BlockEntityScrollRack.OnInteract`) + an `onscrollrackTransform`.
+- **Dropped-in-water destruction is free:** the `dissolveInWater: true` collectible attribute
+  (`CollectibleObject.OnGroundIdle`, server-only, ~1%/tick destroy). Liquid state while held:
+  `Entity.Swimming` / `Entity.FeetInLiquid` public fields (VintagestoryLib).
+
+**Symptom: an item with custom `docId`/attributes on its ItemStack loses them after being fired
+in a kiln (blank/orphaned archive).** `BlockEntityPitKiln.OnFired()` (VSSurvivalMod) does
+`slot.Itemstack = combustibleProps.SmeltedStack.ResolvedItemstack.Clone()` and only copies
+`StackSize` — the source stack's `Attributes` are discarded (the beehive-kiln path too).
+**Fix pattern:** don't rely on the vanilla combustible/kiln transform to carry stack attributes;
+use a grid recipe with `GridRecipeIngredient.CopyAttributesFrom`, or a Scribe-owned firing
+interaction that copies the attributes onto the output stack explicitly.
+
+## Always-on HUD overlays and hotkeys
+
+**Question: how do you draw an always-on, per-tick-updated HUD overlay, and register a
+rebindable hotkey?** (For the v5 pinned-task HUD — decompiled, not yet exercised.)
+
+- `HudElement : GuiDialog` overrides `DialogType => EnumDialogType.HUD` (enum is only
+  `{Dialog, HUD}`), `ToggleKeyCombinationCode => null`, `PrefersUngrabbedMouse => false`.
+  `TryOpen(withFocus)` requests focus only when `DialogType == Dialog`; `OnEscapePressed()`
+  returns false for a HUD (Escape can't close it). "Always-on" = call `TryOpen()` once and never
+  close (`ShouldReceiveRenderEvents() => opened`).
+- No base `OnGameTick`: use `capi.Event.RegisterGameTickListener(handler, ms)` and update text
+  cheaply via `SingleComposer.GetDynamicText(key).SetNewText(...)` (no recompose); unregister in
+  `Dispose()`. Canonical template: `Vintagestory.Client.NoObf.HudElementCoordinates` (composes in
+  `OnOwnPlayerDataReceived`, `AddGameOverlay` plate + `AddDynamicText`, anchored via
+  `EnumDialogArea` + `GuiStyle.DialogToScreenPadding`). To make it non-interactive (per
+  `HudBosshealthBars`): `Focusable => false`, `ShouldReceiveKeyboardEvents() => false`, empty
+  `OnMouseDown`.
+- **Hotkeys:** `IInputAPI.RegisterHotKey(code, name, GlKeys key, HotkeyType type, alt, ctrl,
+  shift)` + `SetHotKeyHandler(code, ActionConsumable<KeyCombination>)` (handler returns bool =
+  consumed); register in `StartClientSide`; rebindings persist by code in `clientsettings.json`.
+
+## Calendar, player events, per-player storage, and survival-mod systems
+
+**Question: how do you read the in-game date, subscribe to player death, persist per-player
+data, detect crafting milestones, and reach temporal-storm / Handbook systems?** (For the
+chronicle/integration features — decompiled, not yet exercised.)
+
+- **Calendar:** `api.World.Calendar` is `IGameCalendar`. Server-side it is NULL until run stage
+  `LoadGamePre`, non-null after. Reads: `Year` (starts 1386), `DayOfYear`, `Month`/`MonthName`
+  (`EnumMonth`), `GetSeason(BlockPos)` (`EnumSeason`), `TotalDays`/`TotalHours` (double, monotonic
+  — good stable sort/dedup key), `HourOfDay`, and `PrettyDate()` for an engine-formatted string.
+  For a game-agnostic Core model, store the numeric stamp and format in the Mod layer — don't call
+  `PrettyDate()` in Core.
+- **Player death:** `IServerEventAPI.PlayerDeath` → `PlayerDeathDelegate(IServerPlayer byPlayer,
+  DamageSource damageSource)`. Server-side, once per death, gives identity + cause.
+- **Per-player persistent store:** `IServerPlayer.SetModData<T>(key, data)` / `GetModData<T>(key,
+  default)` — permanent, per-player, NOT client-synced (also raw-byte `SetModdata`/`GetModdata`/
+  `RemoveModdata`). This is where a "milestones seen" set lives.
+- **No global craft/smelt event:** the only crafting hook is the instance override
+  `Collectible.OnCreatedByCrafting(...)`; `MatchGridRecipeDelegate` is a match filter, not a
+  completion signal. Milestone/achievement-style detection must poll inventory (slow
+  `RegisterGameTickListener` scan against a milestone `AssetLocation` table) or hook `DidUseBlock`.
+- **HTTP:** no HTTP type ships in `VintagestoryAPI.dll`; the mod targets `net10.0`, so use BCL
+  `System.Net.Http.HttpClient` directly (static long-lived instance) — zero new dependency.
+- **Survival-mod-coupled (NOT in the API DLL — `GetModSystem<T>()`-guard and degrade if absent):**
+  temporal storms = `SystemTemporalStability` (broadcasts `TemporalStormRunTimeData` on channel
+  `"temporalstability"`; `StormData.nowStormActive` flips true on start). Handbook =
+  `ModSystemSurvivalHandbook.OpenDetailPageFor(pageCode)`; item page codes via
+  `GuiHandbookItemStackPage.PageCodeForStack(ItemStack)`.
+
+## Custom TTF fonts in the GUI
+
+**Symptom: bundling a custom `.ttf` and passing its name to `CairoFont` doesn't render it.**
+`CairoFont.SetupContext` calls `ctx.SelectFontFace(Fontname, ...)`, which resolves names via the
+OS/font registry — not extensible with a bundled file cross-platform. **Fix pattern (only works
+because Scribe bakes text onto its OWN `ImageSurface`/`Context`):** load the TTF via FreeType from
+`Lib/cairo-sharp.dll` — `Cairo.FreeTypeFontFace.Create(string filename, int loadoptions)` — and
+apply it with `Cairo.Context.SetContextFontFace(face)`, bypassing `SelectFontFace`. Caveats to
+verify live: (a) `SetContextFontFace` sets face but not size — set size via `SetupContext`/
+`SetFontSize`, apply the face override LAST so `SelectFontFace` doesn't clobber it; (b) FreeType
+needs a real filesystem path, so a packed-`.zip` asset may need extraction to temp; (c) cache the
+face — creation isn't free.
+
+## Player groups (for multi-owner / faction-style block gating)
+
+**Question: does Vintage Story have any first-party faction/group concept for gating a block on
+more than one player?** Yes — a persisted **player-group** system (backs in-game chat groups),
+NOT factions/territory. `ICoreServerAPI.Groups` → `IGroupManager` (`PlayerGroupsById`,
+`GetPlayerGroupByName`, `AddPlayerGroup`/`RemovePlayerGroup`). A `PlayerGroup`
+(`Vintagestory.API.Server`) has `int Uid`, `string Name`, `string OwnerUID`, `JoinPolicy`,
+`List<IPlayer> OnlinePlayers`. Per-player membership: `IPlayer.Groups`/`GetGroup(int)` →
+`PlayerGroupMembership { EnumPlayerGroupMemberShip Level; string GroupName; int GroupUid }`;
+`EnumPlayerGroupMemberShip = { None, Member, Op, Owner }` gives leader/member roles for free. For
+*block-ownership* precedent, `LandClaim` gates via `PermittedPlayerUids`
+(`Dictionary<string,EnumBlockAccessFlags>`) and `PermittedPlayerGroupIds`
+(`Dictionary<int,EnumBlockAccessFlags>`) — the engine's own "owner UID + permitted-UID set +
+permitted-group-id set" shape. `BESign` gates editing on `World.Claims.TryAccess(player, Pos,
+EnumBlockAccessFlags.BuildOrBreak)`, not a per-block owner field — Scribe's owner/lock gate layers
+on top of land claims, not instead of them. So group-gated blocks need no third-party mod.
+
 ## Entry template
 
 ```
