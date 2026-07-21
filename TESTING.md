@@ -131,6 +131,23 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
 
 ## add-lectern-block
 
+- [ ] `c9c26fc3` **(7.2) Place, edit, and autosave.** Place a lectern from creative inventory.
+      Plain right-click should open a read view with no edit controls; shift+right-click should
+      open the editor view. In the editor, add a couple of tasks, tick one done, and edit the
+      note. Confirm edits save on their own — a moment after you stop typing (and before you
+      close the dialog), the change should already have gone through, with no Save button to press.
+- [ ] `97938f33` **(7.3) Survives a reload.** After editing a lectern, save and quit the world,
+      then load it back. The lectern's tasks and note should all still be there.
+- [ ] `89290239` **(7.4) View toggle shows fresh content.** From the editor view, use the in-GUI
+      toggle to switch to read view and confirm the edit you just typed shows up (not a stale
+      older version). From the read view, click the toggle to request the editor view back.
+- [ ] `32876056` **(7.7) Reorder, tool panel, and text size.** In the editor view, mouse-drag a
+      row to reorder it and confirm it lands where you dropped it. Collapse and expand the tool
+      panel. Drag the text-size slider and confirm the font scales; reopen the lectern and confirm
+      the text-size preference stuck.
+- [ ] `9c04c5c7` **(7.8) Walk-away flushes the edit.** Open the editor view, make an edit, then
+      walk out of range without closing the dialog. The dialog should auto-close and the edit
+      should be saved (reopen and confirm it persisted) rather than lost.
 - [ ] `c127b9ad` **(7.5) Multiplayer, separate lecterns.** With two clients connected, give
       each a lectern. Confirm edits made on one player's lectern don't bleed into the other's,
       and that when one player edits, the other sees the change appear live in their read view
