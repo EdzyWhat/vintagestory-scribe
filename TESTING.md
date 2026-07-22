@@ -182,7 +182,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         nothing renders outside the box, Add Task scrolls the new empty task into view, and
         Enter/Shift+Tab to an edge row scrolls it into view. The 6.10/6.11 fixes and the 6.5 clip
         half are all now confirmed.
-- [ ] `cd69a96f` **(6.14) Checkbox-to-text margin.** In the editor, focus a task row and confirm
+- [x] `cd69a96f` **(6.14) Checkbox-to-text margin.** In the editor, focus a task row and confirm
       there's a small, comfortable gap between the checkbox and where the text/input starts (not
       flush against the box). Check it holds for both the static label and the focused input, and
       at a couple of text sizes.
@@ -195,6 +195,8 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         (default 8, text-size-scaled) folded into the shared `RowTextLayout.TextX`, so both the
         static label and the floating input inherit the gap in lockstep (tasks only). Retest via
         6.15 — confirm the gap looks comfortable and scales with text size.
+      - **Confirmed 2026-07-21** (user confirmed in-session): the checkbox-to-text margin looks
+        good — comfortable gap between the checkbox and the text/input.
 
 ## skeuomorphic-lectern-gui
 

@@ -132,9 +132,10 @@
       text-size-scaled) folded into the shared `RowTextLayout.TextX`, so BOTH the static label
       (`ScribeRowElement`) and the floating edit input pick up the gap in lockstep (design.md
       Decision 5); tasks only (notes have no checkbox). **Retest via 6.15.**
-- [ ] 6.15 Manually test in-game: confirm a comfortable gap between the checkbox and the text/input
+- [x] 6.15 Manually test in-game: confirm a comfortable gap between the checkbox and the text/input
       on task rows, holding for both the static label and the focused input, at a couple of text
-      sizes (the gap should scale with text size, not stay a fixed pixel width).
+      sizes (the gap should scale with text size, not stay a fixed pixel width). *(Confirmed by the
+      user in-session 2026-07-21: margin looks good.)*
 - [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
       2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
       across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is
