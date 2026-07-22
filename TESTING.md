@@ -117,7 +117,23 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         `ScribeRowTextInput.RenderInteractiveElements` now re-asserts the clip
         (`PushScissor(InsideClipBounds)`/`PopScissor()`) after the base renders. Recorded in
         VSAPI-NOTES.md. Retest via 6.13 (this item = 6.10).
-- [ ] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T20-58-36, screenshot
+        2026-07-21T20-48-55-21041e34.png): the input clip-restore helped, but TWO distinct things
+        still bleed, and the tester diagnosed both precisely:
+        (1) **The `AddRowDivider` inset lines bleed** into the Text Size / Collapse / Done Editing
+        area. These are `AddInset` STATIC elements — they draw in the always-unclipped static pass
+        (VSAPI-NOTES "BeginClip doesn't visually clip a mixed static+interactive list"), so the
+        scissor re-assert can't touch them. **Tester's call: the dividers are undesirable and should
+        never be drawn at all** — so the fix is to remove `AddRowDivider`, not to clip it (the
+        `ScribeRowElement` already bakes its own lined-paper ruling; these engine inset lines are
+        redundant + ugly).
+        (2) **A just-created task's input renders out of bounds until the next recompose.** Tester:
+        it only appears right after Add Task when the new row would overflow, and "Done Editing →
+        Edit removes the bugged symptoms" — i.e. it self-heals on a fresh compose. So it's a
+        first-compose-only state, not a persistent clip failure — the input is composed/positioned
+        before the scroll-into-view (6.11) fully settles its bounds for that first frame. Needs
+        investigation of the Add-Task compose/scroll ordering.
+- [x] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
       long enough to overflow the box, click Add Task; confirm the new (focused, empty) task is
       scrolled into the visible area rather than appearing below the box / off-screen.
       - **Still broken 2026-07-21** (playtest report 2026-07-21T14-19-12, general note "Extra 1"):
@@ -128,6 +144,8 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         (set by Add Task + Enter/Shift+Tab navigation, consumed in `ComposeEditorView`) scrolls the
         focused row fully into view before clamping; one-shot so it never overrides the user's own
         scroll on an unrelated recompose. Retest via 6.13 (this item = 6.11).
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T20-58-36): "the new empty task scrolls
+        into view inside the box." Scroll-into-view works.
 - [ ] `aa8573bd` **(6.13) Clip + scroll-into-view retest.** With a list long enough to overflow:
       scroll around and confirm NOTHING renders outside the box — no ruling/chrome/text-input above
       the title, below over the buttons, or down the screen. Then click Add Task while
@@ -135,6 +153,12 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
       Enter/Shift+Tab to a row near the top or bottom edge and confirm it scrolls into view.
       - Covers the staged fixes for 6.10 (clip re-assert) and 6.11 (scroll-into-view), and the clip
         half of 6.5 that was still failing.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T20-58-36): the scroll-into-view half
+        passes (see 6.11), but the "nothing renders outside the box" half does NOT — the tester
+        submitted this as pass but explicitly tied it to the still-broken 6.10. Two residual bleeds
+        remain (redundant `AddRowDivider` inset lines drawing in the unclipped static pass; a
+        new-task input out of bounds until the next recompose). Retest after the 6.10 follow-up
+        (remove dividers + fix Add-Task first-compose ordering).
 
 ## skeuomorphic-lectern-gui
 
