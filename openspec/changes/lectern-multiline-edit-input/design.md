@@ -33,22 +33,43 @@ it set from mod code — we cannot flip it on a `GuiElementTextInput`.
 **Rejected:** keep `GuiElementTextInput` and try to force wrapping — impossible without the
 `internal` flag, and we'd have to reimplement `Autoheight`. Rebasing is strictly less code.
 
-## Decision 2 — Enter stays commit-and-advance; it must NEVER insert a newline
+## Decision 2 — Plain Enter commits; Shift+Enter inserts a newline; text may carry `\n`
 
-Critical behavior difference: in `OnKeyDownInternal`, multiline mode routes Enter (KeyCode 49) and
-keypad Enter (82) to `OnKeyEnter()`, which **inserts a `\n`**. Single-line mode deferred Enter to
-the caller (unhandled). S2's `ScribeRowTextInput.OnKeyDown` already intercepts Enter *before*
-delegating to base and returns once `onCommitAndAdvance()` handles it — so in the normal path the
-base never sees Enter and no newline is inserted. The one gap: today, if `onCommitAndAdvance()`
-returns `false`, the code falls through to `base.OnKeyDown`, which under multiline would now insert
-a newline. **Fix:** make the Enter/keypad-Enter branch *always* mark `args.Handled = true` and
-`return` in multiline mode regardless of the callback's result — Enter is never a text key here.
-Same for Shift+Tab (already returns on handled; confirm it can't fall through to a Tab insert —
-line 636 shows multiline treats Tab as handled/insertable, so Shift+Tab must be fully consumed).
+In `OnKeyDownInternal`, multiline mode routes Enter (KeyCode 49) and keypad Enter (82) to
+`OnKeyEnter()`, which **inserts a `\n`**. We split the two gestures in
+`ScribeRowTextInput.OnKeyDown`, which already intercepts Enter before the base sees it:
 
-This preserves the S2 invariant that `ScribeBlock.Text` holds a single logical line (wrapped for
-display, never newline-bearing) — no Core/codec/wire change. `SetValue`/`LoadValue` already
-normalize `\r\n`→`\n`, but we simply never let a newline be typed.
+- **Plain Enter (no Shift)** → `onCommitAndAdvance()`; ALWAYS consume (`args.Handled = true;
+  return`) whether or not the callback succeeds, so it can never fall through to the base's
+  `OnKeyEnter()` newline. Enter is commit-and-advance, never a text key.
+- **Shift+Enter** → do NOT intercept; delegate to `base.OnKeyDown` (via the existing
+  `TranslateMacCaretModifiers` passthrough — a plain Shift+Enter isn't an arrow, so it's returned
+  unchanged) so the base's `OnKeyEnter()` inserts the `\n`. The auto-height wiring (Decision 3)
+  then grows the row for the new hard line exactly as it does for a soft wrap.
+
+This is a deliberate change from S2's single-logical-line invariant: `ScribeBlock.Text` may now
+contain `\n`. That is safe end-to-end (verified, decompile + codec + grep): the read view's
+`TextDrawUtil.Lineize` has an explicit `case '\n'` (renders a hard break), `GetMultilineTextHeight`
+measures it, and the codec serializes `Text` as a length-prefixed UTF-8 string — so `\n`
+round-trips with no version bump and no read-view change. `SetValue`/`LoadValue` normalize
+`\r\n`→`\n`, so storage is always `\n`-delimited.
+
+**Tab:** line 636 shows multiline mode treats Tab (52) as handled/insertable. Shift+Tab must be
+fully consumed by the retreat branch (it already returns on handled) so it can never insert a tab
+glyph. Plain Tab: leave to the base (multiline would insert a tab) OR consume it — decide in
+tasks 2.2; a tab glyph inside a task line is almost certainly unwanted, so lean toward consuming
+plain Tab (no insert) unless it's needed for focus traversal.
+
+### Commit-time normalization: trim trailing, keep interior (decided 2026-07-21)
+
+On commit (Enter-advance, Shift+Tab-retreat, blur, Esc-close — i.e. wherever `FlushIfDirty` /
+`OnEditInputTextChanged` finalize the row), normalize the text by **stripping trailing blank lines
+and trailing whitespace while preserving interior newlines**: e.g. `"buy wood\n\nsplit it\n"` →
+`"buy wood\n\nsplit it"`. This prevents a row committing as empty-looking-but-tall from a stray
+trailing Shift+Enter, while keeping intentional interior spacing. Implementation: a
+`TrimEnd()`-style normalization at the `Mod`-layer commit site — NOT in Core, and NOT per-keystroke
+(the player must be able to type a trailing newline and then continue on it; trimming only fires
+at commit). A leading-whitespace trim is out of scope (a player may indent intentionally).
 
 ## Decision 3 — Wire the input's auto-height back into the row list
 
@@ -120,8 +141,9 @@ Re-verify the off-screen skip uses the live grown height.
 
 ## Out of scope
 
-- Player-inserted hard newlines / true multi-paragraph blocks (would need a Core model change and
-  a different commit gesture; Enter stays commit-and-advance).
-- The read view — it already wraps correctly (this is an editor-input-only fix).
+- A distinct commit gesture beyond plain Enter (e.g. Ctrl+Enter is reserved for the separate
+  insert-below feature, ex-S2 6.12). Plain Enter = commit-and-advance, Shift+Enter = newline.
+- Leading-whitespace trimming and interior blank-line collapsing (only trailing is trimmed).
+- The read view — it already wraps AND renders embedded `\n` correctly (editor-input-only fix).
 - Any pin/delete/drag affordance work (owned by `restore-row-affordance-columns` and the wiring
   change, sequenced after this).

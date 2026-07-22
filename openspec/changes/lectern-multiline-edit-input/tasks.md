@@ -17,19 +17,27 @@
       `PushScissor`/`PopScissor` re-assert) still apply on the TextArea base, and that the
       off-screen skip uses the input's live (grown) height, not a fixed one.
 
-## 2. Keep Enter/Tab from inserting text (multiline gotcha)
+## 2. Enter commits, Shift+Enter newlines, Tab safe (multiline gotcha)
 
-- [ ] 2.1 In `OnKeyDown`, make the Enter / keypad-Enter branch ALWAYS consume the key in this
-      element (set `args.Handled = true` and return) rather than falling through to
-      `base.OnKeyDown` when `onCommitAndAdvance()` returns false — because in `multilineMode` the
-      base routes Enter to `OnKeyEnter()`, which inserts a `\n`. Enter must never be a text key
-      here.
-- [ ] 2.2 Confirm Shift+Tab is fully consumed and cannot fall through to a Tab character insert
-      (the base treats Tab as insertable in multiline mode). Plain Tab behavior: decide and
-      document (leave to base = focus traversal, or consume) — must not insert a tab glyph.
-- [ ] 2.3 Confirm `ScribeBlock.Text` never gains an embedded newline via this input (no Core/wire
-      change): a wrapped row is one logical line. Spot-check `OnEditInputTextChanged` writes the
-      unwrapped string.
+- [ ] 2.1 In `OnKeyDown`, split Enter by Shift. **Plain Enter / keypad Enter (no Shift):** ALWAYS
+      consume (`args.Handled = true; return`) via `onCommitAndAdvance()` whether or not the
+      callback succeeds — it must never fall through to the base's `OnKeyEnter()` newline.
+      **Shift+Enter:** do NOT intercept; let it delegate to `base.OnKeyDown` so the base inserts a
+      `\n` (multilineMode routes 49/82 → `OnKeyEnter()`). Confirm `TranslateMacCaretModifiers`
+      passes a non-arrow Shift+Enter through unchanged.
+- [ ] 2.2 Confirm Shift+Tab is fully consumed by the retreat branch and cannot fall through to a
+      Tab character insert (the base treats Tab as insertable in multiline mode). Plain Tab: lean
+      toward consuming it (no tab glyph inserted into a task line) unless focus traversal needs
+      it; decide and document in the code.
+- [ ] 2.3 Add commit-time normalization at the `Mod`-layer commit site (where `FlushIfDirty` /
+      `OnEditInputTextChanged` finalize the row, NOT per-keystroke): trim trailing blank lines and
+      trailing whitespace, preserve interior newlines (e.g. `"a\n\nb\n"` → `"a\n\nb"`). A
+      `TrimEnd()`-style normalization; no leading trim, no interior collapse. Confirm this is the
+      only place `Text` is normalized so all commit paths (Enter, Shift+Tab, blur, Esc) share it.
+- [ ] 2.4 Confirm no Core/codec/wire change is needed for embedded `\n`: `ScribeBlock.Text` is
+      serialized as a length-prefixed UTF-8 string (round-trips `\n`), and the read view's
+      `Lineize` renders `\n` as a hard break. Spot-check `OnEditInputTextChanged` writes the raw
+      (still-newline-bearing) string to the scratch doc.
 
 ## 3. Wire auto-height back into the row list
 
@@ -64,6 +72,13 @@
       and the input wrap at the SAME word boundary (no one-line reflow when focusing/blurring a
       row that sits exactly at a wrap boundary). If they disagree, reconcile the wrap width per
       design Decision 4 and retest.
+- [ ] 4.6 Manually test in-game (Shift+Enter): press Shift+Enter mid-text — confirm a hard line
+      break is inserted at the caret and the row grows; the caret stays put; typing continues on
+      the new line. Confirm plain Enter still commits-and-advances (does NOT newline).
+- [ ] 4.7 Manually test in-game (trailing trim + round-trip): add a trailing Shift+Enter (blank
+      last line), commit, and confirm the row does NOT stay tall/empty (trailing trimmed) while a
+      newline placed BETWEEN two words survives. Switch to read view and confirm the interior
+      newline renders as a hard break; reload the world and confirm it persists.
 
 ## 5. Close out
 

@@ -15,9 +15,13 @@ focused row's height SHALL grow or shrink dynamically to fit the wrapped text â€
 way a static row is measured â€” and the rows below it SHALL shift and the scroll region SHALL
 update accordingly, so a focused row behaves exactly like a static wrapped row. The focused row
 SHALL remain scrolled into view as it grows, and the caret position and focus SHALL be preserved
-across the height-driven recompose. Pressing Enter SHALL remain commit-and-advance and SHALL NOT
-insert a line break, so a row's text stays a single logical line (wrapped for display, never
-newline-bearing).
+across the height-driven recompose.
+
+Pressing Enter (without Shift) SHALL remain commit-and-advance and SHALL NOT insert a line break.
+Pressing Shift+Enter SHALL insert a hard line break into the row's text, growing the row like a
+soft wrap does. A row's text MAY therefore contain player-inserted newlines, which the read view
+SHALL render as hard line breaks. On commit, the row's text SHALL be normalized by trimming
+trailing blank lines and trailing whitespace while preserving interior newlines.
 
 #### Scenario: Focusing a row hands off from label to input with no jump
 - **WHEN** the player clicks into a row to edit it
@@ -47,6 +51,22 @@ newline-bearing).
 - **THEN** the list scrolls so the focused row (and the caret) remain visible
 
 #### Scenario: Enter commits rather than inserting a newline
-- **WHEN** the player presses Enter while editing a wrapped, multi-line row
+- **WHEN** the player presses Enter (without Shift) while editing a wrapped, multi-line row
 - **THEN** the row's edit is committed and focus advances to the next row, and no line break is
   inserted into the row's text
+
+#### Scenario: Shift+Enter inserts a hard line break
+- **WHEN** the player presses Shift+Enter while editing a row
+- **THEN** a line break is inserted at the caret, the row's height grows to fit the new line, and
+  focus stays in the row (no commit-and-advance)
+
+#### Scenario: Committed text has trailing blank lines trimmed
+- **WHEN** the player commits a row whose text ends in one or more blank lines or trailing
+  whitespace (e.g. from a trailing Shift+Enter)
+- **THEN** the committed text has its trailing blank lines and whitespace removed, while any
+  interior newlines between text are preserved
+
+#### Scenario: Read view renders hard newlines
+- **WHEN** a row whose committed text contains interior newlines is shown in the read view
+- **THEN** each newline renders as a hard line break, and the row's height reflects the resulting
+  line count
