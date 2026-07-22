@@ -490,6 +490,24 @@ Option arrow combos to the existing `MoveCursor(..., wholeWord)` / Home-End logi
 hand focus to the sibling row. Everything else is inherited. `OnCaretPositionChanged` is a
 public hook if the floating field needs to report caret pos back to the dialog.
 
+**Symptom: subclassed `GuiElementTextArea` crashes with `NullReferenceException` in
+`Render2DTexturePremultipliedAlpha` the moment a row gains focus, if your
+`ComposeTextElements` override skipped the base to drop the border.** (Hit for real —
+crash 2026-07-21T23-25, when a reopened editor auto-focused a row on world load.)
+`GuiElementTextArea.RenderInteractiveElements` does, unconditionally when focused,
+`Render2DTexturePremultipliedAlpha(highlightTexture.TextureId, highlightBounds)` — and
+`highlightBounds` is **private to `GuiElementTextArea`** and set **only** inside its private
+`GenerateHighlight()`, which runs only from its `ComposeTextElements`. So an override that
+doesn't call the base (to avoid baking the emboss+dark-fill border) leaves `highlightBounds`
+null → NRE. NOTE this differs from `GuiElementTextInput`, where the equivalent fields are
+`protected` (a subclass could set them itself) — on `TextArea` they're private, and the text
+`textTexture` is `internal`, so you can reproduce **neither** the highlight nor the text
+build yourself. **Fix: call `base.ComposeTextElements` but pass a THROWAWAY
+`ImageSurface`/`Context`.** Decompile shows the emboss + dark fill draw onto the *passed*
+`ctx` (→ discarded), while `GenerateHighlight()` and `RecomposeText()` ignore that ctx and
+build their own textures + set `highlightBounds` off `Bounds` regardless. Net: borderless
+look, no crash, text + faint focus highlight both work. See `ScribeRowTextInput`.
+
 ## Held-item writing (books / notebooks / tablets)
 
 > Facts gathered during the 2026-07-21 roadmap-exploration pass (see `docs/specs/`), from
