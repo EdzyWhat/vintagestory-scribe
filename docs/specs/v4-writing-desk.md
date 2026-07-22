@@ -24,6 +24,20 @@ This spec merges five roadmap items into one coherent design:
 5. **Writing desk as faction task-assignment** (the big research item) — the desk becomes a
    tool for a group to assign tasks to members, with group leaders able to lock the assignment
    feature; it pairs with "pin a faction-assigned task to your own lectern".
+6. **Search / find within the desk document** — a text-search box that filters the desk's row
+   list to tasks/notes whose text matches a typed query. The desk is the tier where a player
+   first has enough consolidated content that scrolling stops scaling and *finding* a note
+   matters. **Within-document scope** (the currently-open desk's own blocks) — deliberately the
+   cheap version: it reuses the exact **filtered row list** the kanban tabs already use (item 6
+   under Implementation phases below / the `where <predicate>` filter), swapping the section
+   predicate for a case-insensitive text-match on `ScribeBlock.Text`. No Core change, no
+   server/network change — it's the same client-side "filter the shared `ScribeRowElement` list,
+   map filtered row → true block index for mutations" mechanism. **Global cross-document search**
+   ("where did I write that?" across *all* your documents / bound desks) is explicitly OUT of
+   scope here — that needs a server-side cross-document index/scan, the same class of problem as
+   the item-14 "find faction tasks assigned to me" query, and should get its own later change if
+   wanted. Search composes with the kanban tabs (search within the active tab's filtered set) and
+   with the hide-completed toggle.
 
 The central research finding (see VS API hooks below) reshapes item 5: **Vintage Story ships a
 first-party player-group system** (`ICoreServerAPI.Groups` / `IGroupManager`, with

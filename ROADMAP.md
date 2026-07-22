@@ -52,9 +52,11 @@ age (the saw); anything past that is cosmetic.
     open-air proximity heating of a hotbar item is unconfirmed — see VSAPI-NOTES.)
 - **v4 — Writing desk (organization)** → `docs/specs/v4-writing-desk.md`. Private owner-gated
   block; consolidates notes + categories; **kanban tabs** (Active / Backlog / Completed) as
-  the fuller home for the completed-task funnel. Also the home for the **faction/shared
-  task-assignment** idea — VS ships a first-party player-group system, so this may need no
-  external dependency (see open decision below).
+  the fuller home for the completed-task funnel. Also the home for **within-document search**
+  (a text box filtering the desk's rows by typed query — reuses the kanban filtered-row-list
+  mechanism, no Core/server change; global cross-document search is a later, separate change)
+  and the **faction/shared task-assignment** idea — VS ships a first-party player-group system,
+  so this may need no external dependency (see open decision below).
 - **v5 — Backpack (portability)** → `docs/specs/v5-backpack-hud.md`. Hotkey-accessed;
   always-on **pinned-task HUD** (≤3 pins, native `HudElement` — not ImGui); plus a
   **quick-add hotkey** for one-line capture without opening the full document.
