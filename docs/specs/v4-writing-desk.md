@@ -30,9 +30,21 @@ This spec merges five roadmap items into one coherent design:
    matters. **Within-document scope** (the currently-open desk's own blocks) — deliberately the
    cheap version: it reuses the exact **filtered row list** the kanban tabs already use (item 6
    under Implementation phases below / the `where <predicate>` filter), swapping the section
-   predicate for a case-insensitive text-match on `ScribeBlock.Text`. No Core change, no
-   server/network change — it's the same client-side "filter the shared `ScribeRowElement` list,
-   map filtered row → true block index for mutations" mechanism. **Global cross-document search**
+   predicate for a text-match on `ScribeBlock.Text`. It's the same client-side "filter the shared
+   `ScribeRowElement` list, map filtered row → true block index for mutations" mechanism, no
+   server/network change. **Match-shape decisions (settled 2026-07-21 — a "contains" search, not
+   "starts-with"):** the predicate is `text.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)`
+   — substring (matches anywhere in the text, not just the start), case-insensitive, query trimmed,
+   and an empty/whitespace query matches everything (no filter). Rather than bury this in the
+   Cairo-bound desk UI, put the predicate in a **pure `src/Core/ScribeSearch.Matches(block, query)`
+   helper with unit tests** — it's exactly the string logic the `Core`-is-testable-without-a-game
+   invariant wants captured (so this is *one tiny pure Core addition + tests*, not literally "no
+   Core change"); the UI (text box + filtered list) stays in Mod. **Deferred, deliberately:**
+   (a) *multiline haystack* — once `lectern-multiline-edit-input` lands, `Text` can hold `\n`; v1
+   uses plain `Contains`, which matches within a line but NOT across a hard line break (normalize
+   `\n`→space in the haystack later if cross-break matching is wanted); (b) *match highlighting*
+   inside the row is an explicit v1 **non-goal** — it needs segmented row-text drawing and should
+   be its own follow-up, so v1 is filter-to-matching-rows only. **Global cross-document search**
    ("where did I write that?" across *all* your documents / bound desks) is explicitly OUT of
    scope here — that needs a server-side cross-document index/scan, the same class of problem as
    the item-14 "find faction tasks assigned to me" query, and should get its own later change if
