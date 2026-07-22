@@ -64,7 +64,9 @@ The editor SHALL let the player move between rows from the keyboard while editin
 Enter SHALL commit the current row's edit and move focus to the next row; pressing Shift+Tab
 SHALL commit and move focus to the previous row. Committing an edit (by Enter, Shift+Tab, or
 losing focus) SHALL apply the change through the existing lock-gated server edit path. Pressing
-Esc SHALL revert the focused row to its last stored text without committing.
+Esc SHALL commit the focused row (via the same blur-commit path) and close the dialog — a fast
+panic-close, not an in-place revert. *(Decision reversed 2026-07-21 after playtest: the tester
+wanted Esc to be a fast panic-close; see task 4.4.)*
 
 #### Scenario: Enter commits and advances
 - **WHEN** the player finishes typing in a row and presses Enter
@@ -75,9 +77,10 @@ Esc SHALL revert the focused row to its last stored text without committing.
 - **WHEN** the player presses Shift+Tab while editing a row
 - **THEN** the row's edit is committed and focus moves to the previous row
 
-#### Scenario: Esc reverts the row
-- **WHEN** the player presses Esc while editing a row with uncommitted changes
-- **THEN** the row reverts to its last stored text and the change is not committed
+#### Scenario: Esc commits and closes the dialog
+- **WHEN** the player presses Esc while editing a row
+- **THEN** the focused row's pending edit is committed (blur-commit fires on close) and the
+  dialog closes, rather than reverting the row in place
 
 #### Scenario: Blur commits the edit
 - **WHEN** the player clicks away from an actively edited row without pressing Enter
