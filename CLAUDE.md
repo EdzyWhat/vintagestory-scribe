@@ -26,16 +26,25 @@ architecture, not this file.
 
 ## Modding references
 
-Before inventing a pattern from scratch or reverse-engineering `VintagestoryAPI.dll`
-(decompiling is a fallback, not a first resort), check these first, in order:
+Before inventing a pattern from scratch or researching an approach/bug externally, check
+these first, in order:
 
 1. **`VSAPI-NOTES.md`** — symptom-indexed facts about API internals we already learned the
    hard way (GUI composer lifecycle, `Lang` domain-prefixing, text wrapping). Check here
    first: several v1 bugs were misdiagnosed for multiple rounds (as staging issues, etc.)
-   before someone decompiled and found the real cause — don't repeat that.
-2. The wiki and shipped-mod source below.
-3. Decompiling `VintagestoryAPI.dll` itself, as a last resort — and when you do, add the
-   finding to `VSAPI-NOTES.md` so it's not re-derived next tier.
+   before someone read the source and found the real cause — don't repeat that.
+2. **Read the game DLLs directly — this is a FIRST resort, not a fallback.** Decompile with
+   `ilspycmd` (`~/.dotnet/tools/ilspycmd`) and read the shipped source + doc-comments; they
+   are written for modders like us and are the most authoritative answer to "how does this
+   actually work." **Prefer `VintagestoryLib.dll`** (`/Applications/Vintage Story.app/VintagestoryLib.dll`)
+   — it holds the *implementations* (render API, scissor stack, client platform) and its
+   comments are especially descriptive. `VintagestoryAPI.dll` holds the interfaces/base
+   classes and their XML doc-comments. Do this BEFORE reaching for the wiki or guessing.
+   When you learn something non-obvious this way, add it to `VSAPI-NOTES.md` so it's not
+   re-derived next time. (`ilspycmd -t <FullTypeName> <dll>` dumps one type; `-l c <dll>`
+   lists classes.)
+3. The wiki and shipped-mod source below (useful for vanilla precedent and worked examples,
+   but the DLLs above are the ground truth when the two disagree).
 
 - **The wiki**: https://wiki.vintagestory.at/Category:Modding — start at `Modding:GUIs` for
   dialog/composer questions. Page-specific lookups (e.g.
