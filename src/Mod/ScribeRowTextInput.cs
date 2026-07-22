@@ -68,12 +68,6 @@ public sealed class ScribeRowTextInput : GuiElementTextArea
     /// the row's edit. May be null when the dialog does not need a blur hook.</summary>
     private readonly Action? onBlur;
 
-    /// <summary>This element's own faint focused-highlight texture. The base
-    /// <see cref="GuiElementTextArea"/> has an equivalent but it's private, so we build our own
-    /// (and skip the base's emboss+fill box) in <see cref="ComposeTextElements"/>.</summary>
-    private LoadedTexture focusHighlightTexture;
-    private ElementBounds? focusHighlightBounds;
-
     public ScribeRowTextInput(
         ICoreClientAPI capi,
         ElementBounds bounds,
@@ -87,49 +81,54 @@ public sealed class ScribeRowTextInput : GuiElementTextArea
         this.onCommitAndAdvance = onCommitAndAdvance;
         this.onCommitAndRetreat = onCommitAndRetreat;
         this.onBlur = onBlur;
-        focusHighlightTexture = new LoadedTexture(capi);
     }
 
     /// <summary>
-    /// Builds only the subtle focused-highlight texture (a faint translucent white shown while
-    /// <c>HasFocus</c>), skipping <see cref="GuiElementTextArea"/>'s <c>EmbossRoundRectangleElement</c>
-    /// + dark <c>0.2</c> fill that together drew the boxed border. We build our own texture because
-    /// the base's <c>highlightTexture</c>/<c>GenerateHighlight</c> are private to
-    /// <c>GuiElementTextArea</c>. The base ends with the internal <c>RecomposeText()</c> (which builds
-    /// the text texture); we can't call it from this assembly, but the dialog always calls
-    /// <c>SetValue</c> on this input right after Compose (see the compose tail in
-    /// <c>GuiDialogScribeLectern.ComposeEditorView</c>), and <c>SetValue</c> -> <c>LoadValue</c> ->
-    /// <c>TextChanged</c> -> <c>RecomposeText</c> rebuilds the text texture -- so the glyphs render.
+    /// Drops <see cref="GuiElementTextArea"/>'s boxed border (its <c>EmbossRoundRectangleElement</c>
+    /// + dark <c>0.2</c> fill) while keeping everything else working. The trick (decompile-confirmed):
+    /// the base's <c>ComposeTextElements</c> draws the emboss + fill onto the PASSED <c>ctx</c>, but
+    /// its <c>GenerateHighlight()</c> and <c>RecomposeText()</c> IGNORE that ctx -- they build their
+    /// own textures (the focus highlight, the glyph texture) plus set the private
+    /// <c>highlightBounds</c>, all off <c>Bounds</c>. So we call <c>base.ComposeTextElements</c> with a
+    /// THROWAWAY surface/context: the border draws onto scratch we immediately discard, while the
+    /// highlight + text + <c>highlightBounds</c> initialize correctly on the element.
+    ///
+    /// This is required (not just cosmetic): the base's <c>RenderInteractiveElements</c>
+    /// unconditionally renders <c>highlightBounds</c> when focused, so if we skipped
+    /// <c>GenerateHighlight</c> entirely (as the old <c>GuiElementTextInput</c>-based override did),
+    /// <c>highlightBounds</c> would be null and focusing a row would crash with a
+    /// <c>NullReferenceException</c> (VintagestoryData crash 2026-07-21T23-25). We can't reproduce
+    /// <c>GenerateHighlight</c>/<c>RecomposeText</c> ourselves -- they're private to the base and the
+    /// glyph <c>textTexture</c> is <c>internal</c> -- so routing through the base with a discarded ctx
+    /// is the way to get the borderless look without reimplementing inaccessible engine internals.
     /// </summary>
     public override void ComposeTextElements(Context ctx, ImageSurface surface)
     {
-        var hlSurface = new ImageSurface(Format.Argb32, (int)Bounds.OuterWidth, (int)Bounds.OuterHeight);
-        Context hlCtx = genContext(hlSurface);
-        hlCtx.SetSourceRGBA(1.0, 1.0, 1.0, 0.2);
-        hlCtx.Paint();
-        generateTexture(hlSurface, ref focusHighlightTexture);
-        hlCtx.Dispose();
-        hlSurface.Dispose();
+        int w = System.Math.Max(1, (int)Bounds.OuterWidth);
+        int h = System.Math.Max(1, (int)Bounds.OuterHeight);
+        var throwaway = new ImageSurface(Format.Argb32, w, h);
+        Context throwawayCtx = genContext(throwaway);
 
-        focusHighlightBounds = Bounds.FlatCopy();
-        focusHighlightBounds.CalcWorldBounds();
-        // NOTE: base ends with RecomposeText() here; we rely on the dialog's post-Compose SetValue
-        // to trigger it (see summary). If that call is ever removed, the input would render blank.
+        // Emboss + dark fill land on the throwaway (discarded); GenerateHighlight + RecomposeText
+        // build the real highlight/text textures + set highlightBounds off Bounds regardless.
+        base.ComposeTextElements(throwawayCtx, throwaway);
+
+        throwawayCtx.Dispose();
+        throwaway.Dispose();
     }
 
     /// <summary>
-    /// Renders the focused-highlight (when focused) then the base text/selection/caret.
+    /// Renders as the base does, but skips drawing entirely when this row is scrolled fully outside
+    /// the enclosing <c>BeginClip</c> window.
     ///
-    /// <para><b>Off-screen skip.</b> When this row is scrolled fully outside the enclosing
-    /// <c>BeginClip</c> window, draw nothing. Unlike <c>GuiElementTextInput</c> (whose
-    /// <c>GlScissorFlag(false)</c> globally disabled the scissor and caused a "new task drawn below
-    /// the box" bleed, playtest 2026-07-21T20-58-36), <c>GuiElementTextArea</c> does NOT touch the
-    /// scissor -- so the ambient dialog clip already clips this input's text. The skip is therefore
-    /// defensive rather than load-bearing here, but it's cheap and focus-safe (the input stays
-    /// focusable/typable and reappears when its row scrolls back in). Uses <c>renderY</c>, which
-    /// tracks the parent's scroll <c>fixedY</c> shift; vertical overlap only (the list scrolls only
-    /// vertically). (The old scissor re-assert correction that <c>GuiElementTextInput</c> needed is
-    /// dropped: the base no longer disables the scissor, so there's nothing to restore.)</para>
+    /// <para>Unlike <c>GuiElementTextInput</c> (whose <c>GlScissorFlag(false)</c> globally disabled
+    /// the scissor and caused a "new task drawn below the box" bleed, playtest 2026-07-21T20-58-36),
+    /// <c>GuiElementTextArea</c> does NOT touch the scissor -- so the ambient dialog clip already
+    /// clips this input's text, and the old <c>PushScissor</c>/<c>PopScissor</c> re-assert is no longer
+    /// needed. The off-screen skip is therefore defensive rather than load-bearing, but it's cheap and
+    /// focus-safe (the input stays focusable/typable and reappears when its row scrolls back in). Uses
+    /// <c>renderY</c>, which tracks the parent's scroll <c>fixedY</c> shift; vertical overlap only (the
+    /// list scrolls only vertically).</para>
     /// </summary>
     public override void RenderInteractiveElements(float deltaTime)
     {
@@ -141,12 +140,6 @@ public sealed class ScribeRowTextInput : GuiElementTextArea
             double clipBottom = clipTop + InsideClipBounds.InnerHeight;
             // Fully above or fully below the visible window -> don't draw.
             if (bottom <= clipTop || top >= clipBottom) return;
-        }
-
-        if (HasFocus && focusHighlightTexture.TextureId != 0 && focusHighlightBounds != null)
-        {
-            api.Render.GlToggleBlend(true);
-            api.Render.Render2DTexture(focusHighlightTexture.TextureId, focusHighlightBounds);
         }
 
         base.RenderInteractiveElements(deltaTime);
@@ -201,12 +194,6 @@ public sealed class ScribeRowTextInput : GuiElementTextArea
 
         // ---- Mac caret-convention translation, then delegate to the base ----
         base.OnKeyDown(api, TranslateMacCaretModifiers(args));
-    }
-
-    public override void Dispose()
-    {
-        base.Dispose();
-        focusHighlightTexture?.Dispose();
     }
 
     /// <summary>
