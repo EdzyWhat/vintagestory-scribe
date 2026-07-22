@@ -24,32 +24,11 @@
       "range": { "min": 0, "max": 100 }
     },
     {
-      "code": "ReadListWidth",
+      "code": "RowListWidth",
       "type": "float",
-      "default": 300,
-      "comment": "Row-list width in the lectern's read view.",
+      "default": 500,
+      "comment": "Row-list width, shared by the lectern's read and editor views.",
       "range": { "min": 100, "max": 800 }
-    },
-    {
-      "code": "EditorListWidth",
-      "type": "float",
-      "default": 340,
-      "comment": "Row-list width in the lectern's editor view.",
-      "range": { "min": 100, "max": 800 }
-    },
-    {
-      "code": "RowDividerThickness",
-      "type": "float",
-      "default": 2,
-      "comment": "Thickness, in pixels, of the divider line drawn below each lectern row.",
-      "range": { "min": 0, "max": 10 }
-    },
-    {
-      "code": "RowDividerBrightness",
-      "type": "float",
-      "default": 0.85,
-      "comment": "Brightness (0-1) of the divider line drawn below each lectern row.",
-      "range": { "min": 0, "max": 1 }
     }
   ]
 }

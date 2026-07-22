@@ -133,6 +133,14 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         first-compose-only state, not a persistent clip failure — the input is composed/positioned
         before the scroll-into-view (6.11) fully settles its bounds for that first frame. Needs
         investigation of the Add-Task compose/scroll ordering.
+      - **Fix staged (awaiting retest) 2026-07-21:** both residual bleeds addressed.
+        (1) `AddRowDivider` removed entirely — the `AddInset` divider lines drew in the unclippable
+        static pass and were redundant with `ScribeRowElement`'s own baked ruling.
+        (2) `ScribeRowTextInput.RenderInteractiveElements` now skips drawing when its row is scrolled
+        fully outside the clip window — the base input clips its own text to its own bounds, not the
+        dialog window, so a focused input on an off-screen row painted unclipped below the box. Skip
+        is focus-safe (reads live `renderY`, so it also covers the scroll-out-while-focused case, not
+        just first-compose). Retest via 6.13.
 - [x] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
       long enough to overflow the box, click Add Task; confirm the new (focused, empty) task is
       scrolled into the visible area rather than appearing below the box / off-screen.
@@ -159,6 +167,11 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         remain (redundant `AddRowDivider` inset lines drawing in the unclipped static pass; a
         new-task input out of bounds until the next recompose). Retest after the 6.10 follow-up
         (remove dividers + fix Add-Task first-compose ordering).
+      - **Fix staged (awaiting retest) 2026-07-21:** both residual bleeds fixed (dividers removed;
+        off-screen input render-skip) — see the 6.10 entry above. This retest now covers the full
+        "nothing outside the box" claim plus the scroll-into-view (6.11) that already passed. On
+        retest, specifically confirm the divider lines are GONE (not just clipped) and Add Task on a
+        full list shows no stray input below "Done Editing".
 
 ## skeuomorphic-lectern-gui
 

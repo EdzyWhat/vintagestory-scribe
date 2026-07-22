@@ -99,10 +99,19 @@
       (decompile-confirmed via `VintagestoryLib.dll`):** `GuiElementTextInput.RenderInteractiveElements`
       ends with `GlScissorFlag(false)`, which is a GLOBAL `GL.Disable(GL_SCISSOR_TEST)` in
       `ClientPlatformWindows` — it does NOT restore the enclosing `BeginClip` scissor on the render
-      API's `ScissorStack`, so everything drawn after the input renders unclipped. **Fix:**
-      `ScribeRowTextInput.RenderInteractiveElements` now calls `base` then
+      API's `ScissorStack`, so everything drawn after the input renders unclipped. **Fixes (three,
+      after playtest 2026-07-21T20-58-36 showed two residual bleeds):**
+      (a) `ScribeRowTextInput.RenderInteractiveElements` calls `base` then
       `PushScissor(InsideClipBounds)`/`PopScissor()` to re-assert the dialog's clip for later
-      elements. Recorded in VSAPI-NOTES.md ("text input ... bleeds out unclipped"). **Retest via
+      elements.
+      (b) That same override now also SKIPS drawing the input when its row is scrolled fully
+      outside the clip window — the base input clips its own text to its own bounds (not the dialog
+      window), so a focused input on an off-screen row would otherwise paint unclipped below the
+      box; the render skip is focus-safe (input stays typable, reappears when scrolled back).
+      (c) Removed `AddRowDivider` entirely (method, call site, `RowDivider*` config + debug sliders,
+      and the stale `configlib-patches.json` entries): the `AddInset` dividers drew in the
+      always-unclipped static pass (so they bled into the controls area) AND were redundant with
+      `ScribeRowElement`'s own baked lined-paper ruling. Recorded in VSAPI-NOTES.md. **Retest via
       6.13.**
 - [x] 6.11 **BUG — adding a task while scrolled/overflowing puts the new row off-screen (fixed).**
       Add Task (and Enter/Shift+Tab navigation) could move focus to a row outside the visible

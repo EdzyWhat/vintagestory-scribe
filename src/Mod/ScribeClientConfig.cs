@@ -41,34 +41,21 @@ public sealed class ScribeClientConfig
     /// <summary>Base (unscaled) vertical gap between rows in the scrollable list, shared by both
     /// views. Scaled by <see cref="TextSizeScale"/> at the point of use (see
     /// <c>GuiDialogScribeLectern.ScaledRowSpacing</c>) so the gap grows/shrinks with row text
-    /// rather than staying a fixed pixel size -- like <see cref="TaskRowHeight"/>. A thin divider
-    /// (<see cref="RowDividerThickness"/>) is centered in this gap.</summary>
+    /// rather than staying a fixed pixel size -- like <see cref="TaskRowHeight"/>.</summary>
     public double RowSpacing = 14;
 
     /// <summary>Vertical gap between the title bar and the first row, shared by both views.</summary>
     public double TopContentGap = 20;
 
-    // ---------------- Row divider ----------------
-
-    /// <summary>Base (unscaled) thickness, in pixels, of the embossed-inset divider line drawn
-    /// below each row. Scaled by <see cref="TextSizeScale"/> at the point of use (see
-    /// <c>GuiDialogScribeLectern.ScaledRowDividerThickness</c>) so the divider thickens/thins
-    /// with row text rather than staying a fixed pixel size.</summary>
-    public double RowDividerThickness = 2;
-
-    /// <summary>Brightness (0-1) of the embossed-inset divider line -- see the engine's own
-    /// <c>AddInset</c> helper's <c>brightness</c> parameter.</summary>
-    public float RowDividerBrightness = 0.85f;
-
-    // ---------------- Lined-paper ruling (ScribeRowElement, read view) ----------------
+    // ---------------- Lined-paper ruling (ScribeRowElement, both views) ----------------
     //
-    // The custom read-view row (ScribeRowElement) draws its own "lined paper" hairline as a
-    // structural part of the row (it scrolls with the row and is drawn per-row in the
-    // interactive pass), rather than the AddInset divider chrome the old static rows used. These
-    // knobs tune that hairline; they are authored so the line's *visual* could later be swapped
-    // for an image without changing the row's layout math (row-list-rework S1, design.md
-    // Decision 3). Distinct from RowDivider* above, which still drives the editor view's dividers
-    // until S2 reworks that view too.
+    // Each row (ScribeRowElement) draws its own "lined paper" hairline as a structural part of the
+    // row (it scrolls with the row and is drawn per-row in the interactive pass, so it clips
+    // natively). This replaced the old AddInset divider chrome entirely -- both views now use this
+    // ruling and nothing else (the redundant, unclippable editor dividers were removed 2026-07-21).
+    // These knobs tune the hairline; they are authored so the line's *visual* could later be
+    // swapped for an image without changing the row's layout math (row-list-rework S1, design.md
+    // Decision 3).
 
     /// <summary>Ruling color as RGBA components (0-1). A low-alpha near-ink tone reads as a faint
     /// ruled line on the parchment backdrop. Kept as four fields (not a Vec-typed member) so the

@@ -106,19 +106,38 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     }
 
     /// <summary>
-    /// Re-asserts the dialog's clip after the base input renders. The base
-    /// <see cref="GuiElementTextInput.RenderInteractiveElements"/> ends with
-    /// <c>GlScissorFlag(false)</c>, which is a GLOBAL <c>GL.Disable(GL_SCISSOR_TEST)</c> in
-    /// <c>ClientPlatformWindows</c> -- it does NOT restore the enclosing <c>BeginClip</c> scissor
-    /// on the render API's <c>ScissorStack</c>. So without this, everything drawn after this input
-    /// in the frame (sibling rows, rulings, controls below) renders UNCLIPPED and bleeds past the
-    /// dialog frame (VSAPI-NOTES.md "text input ... bleeds out unclipped"). Push-then-pop the clip
-    /// bounds still on the stack top: <c>PopScissor</c> re-issues that scissor + re-enables the
-    /// flag, restoring the dialog's clip for later elements. No-op when this input isn't inside a
-    /// clip region (<c>InsideClipBounds</c> null).
+    /// Renders the input with two clip corrections the base class doesn't make:
+    ///
+    /// <para><b>1. Skip drawing when the row is scrolled fully out of the clip window.</b> The base
+    /// <see cref="GuiElementTextInput"/> clips its OWN text to its OWN bounds (its own
+    /// <c>GlScissor</c>), NOT to the enclosing <c>BeginClip</c> window -- so a focused input whose
+    /// row is scrolled outside the visible list would still paint its text at that off-screen
+    /// position, unclipped by the dialog (the "new task drawn below the box" bug, playtest
+    /// 2026-07-21T20-58-36). Rendering is independent of focus/hit-testing, so skipping the draw
+    /// leaves the input fully focusable and typable; it reappears when its row scrolls back in.
+    /// (Vertical overlap only -- the list scrolls only vertically. Uses <c>renderY</c>, which
+    /// tracks the parent's scroll <c>fixedY</c> shift; see VSAPI-NOTES scroll two-pass note.)</para>
+    ///
+    /// <para><b>2. Re-assert the dialog's clip after the base renders.</b> The base ends with
+    /// <c>GlScissorFlag(false)</c>, a GLOBAL <c>GL.Disable(GL_SCISSOR_TEST)</c> in
+    /// <c>ClientPlatformWindows</c> that does NOT restore the enclosing <c>BeginClip</c> scissor on
+    /// the render API's <c>ScissorStack</c> -- so everything drawn after this input would render
+    /// UNCLIPPED (VSAPI-NOTES "text input ... bleeds out unclipped"). Push-then-pop the clip bounds
+    /// still on the stack top: <c>PopScissor</c> re-issues that scissor + re-enables the flag,
+    /// restoring the dialog's clip for later elements.</para>
     /// </summary>
     public override void RenderInteractiveElements(float deltaTime)
     {
+        if (InsideClipBounds != null)
+        {
+            double top = Bounds.renderY;
+            double bottom = top + Bounds.InnerHeight;
+            double clipTop = InsideClipBounds.renderY;
+            double clipBottom = clipTop + InsideClipBounds.InnerHeight;
+            // Fully above or fully below the visible window -> don't draw (would bleed unclipped).
+            if (bottom <= clipTop || top >= clipBottom) return;
+        }
+
         base.RenderInteractiveElements(deltaTime);
 
         if (InsideClipBounds != null)

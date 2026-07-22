@@ -130,16 +130,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             () => (float)clientConfig.RowListWidth,
             value => { clientConfig.RowListWidth = value; RequestRecompose(); }));
 
-        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
-            DebugDomain, DebugCategory, "Row Divider Thickness", 0f, 10f,
-            () => (float)clientConfig.RowDividerThickness,
-            value => { clientConfig.RowDividerThickness = value; RequestRecompose(); }));
-
-        debugSliderIds.Add(VSImGui.Debug.DebugWidgets.FloatSlider(
-            DebugDomain, DebugCategory, "Row Divider Brightness", 0f, 1f,
-            () => clientConfig.RowDividerBrightness,
-            value => { clientConfig.RowDividerBrightness = value; RequestRecompose(); }));
-
         debugSliderIds.Add(VSImGui.Debug.DebugWidgets.Button(DebugDomain, DebugCategory,
             "Save to scribe-client-config.json",
             () => capi.StoreModConfig(clientConfig, ScribeModSystem.ClientConfigFileName)));
@@ -165,10 +155,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// itself stays the unscaled base -- scaling here at the point of use, not by mutating the
     /// stored value, avoids compounding the scale on every recompose/reopen.</summary>
     private double ScaledRowSpacing => clientConfig.RowSpacing * clientConfig.TextSizeScale;
-
-    /// <summary>Divider thickness scaled by the current text size, same reasoning as
-    /// <see cref="ScaledRowSpacing"/>.</summary>
-    private double ScaledRowDividerThickness => clientConfig.RowDividerThickness * clientConfig.TextSizeScale;
 
     /// <summary>The row list's content bounds (the single element every row is parented under)
     /// for whichever view is currently composed. Re-set at the top of each ComposeXxxView call;
@@ -377,17 +363,6 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// same swappability, less code.</summary>
     private static readonly AssetLocation BackdropTexture = new("scribe:textures/gui/lecternbackdrop.png");
 
-    /// <summary>Adds a subtle horizontal divider centered in the gap below a row, using the
-    /// engine's own embossed-inset primitive (<c>AddInset</c>) rather than a hand-rolled Cairo
-    /// draw -- a thin inset reads as a faint separator line, matching the Slack reference's
-    /// light row dividers without inventing new rendering code. Thickness/brightness/the
-    /// enclosing gap size are all config knobs (<see cref="ScribeClientConfig.RowSpacing"/>
-    /// etc.) so the divider's look can be re-tuned without a rebuild.</summary>
-    private void AddRowDivider(double y, double width)
-    {
-        var dividerBounds = ElementBounds.Fixed(0, y + ScaledRowSpacing / 2 - ScaledRowDividerThickness / 2, width, ScaledRowDividerThickness);
-        SingleComposer.AddInset(dividerBounds, depth: 1, brightness: clientConfig.RowDividerBrightness);
-    }
 
     // ---------------- Read view ----------------
 
@@ -658,7 +633,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
                     suppressText: isFocusedRow),
                 ScribeBlockRowCell.TextKey(i));
 
-            if (i < blocks.Count - 1) AddRowDivider(rowYs[i] + rowHeights[i], listWidth);
+            // No separate divider element: each ScribeRowElement bakes its own lined-paper ruling
+            // (ScribeRowElement.DrawRuling) into its clipped interactive-pass texture. The old
+            // AddInset dividers were both redundant with that ruling AND unclippable (AddInset is a
+            // static-pass element -> it drew unclipped and bled into the controls below the list;
+            // playtest 2026-07-21T20-58-36 / VSAPI-NOTES "BeginClip doesn't clip static elements").
 
             // The single floating input goes onto the focused row, aligned to where that row's
             // static label would draw via the SAME RowTextLayout metric the element uses -- so the
