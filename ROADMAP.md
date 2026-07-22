@@ -181,13 +181,19 @@ specs (each documents its assumed default) but they shape sequencing and scope.
    leave faction backing (built-in player groups vs. shared owner-UID list vs. third-party mod)
    as an open question until v4 is actually scoped. The player-group finding (VSAPI-NOTES) means
    the no-dependency path exists whenever we return to it.
-2. **Lectern-polish quick wins** — **DECIDED 2026-07-21: hold with the polish cluster**, not a
-   standalone change. Reason: the "Edit"/"Edit Tasks" relabel opens a larger question — use
-   **icons instead of text** for these labels/controls, which requires first auditing the
-   built-in icon font (see the lectern-gui-polish spec's icon-font audit — note there's NO
-   built-in pin or grip glyph, so custom-drawn SVGs may be needed) and deciding built-in vs.
-   custom-drawn. So the relabel + placement facing wait until that icon direction is settled
-   rather than shipping text labels we'd then replace.
+2. **Lectern-polish quick wins** — **DECIDED 2026-07-21 (icon direction settled): go icon-only,
+   custom SVGs. Assets + registration mechanism now LANDED** (`add-custom-svg-row-icons`). The
+   icon-font audit (lectern-gui-polish spec, item 8) resolved the direction the relabel was blocked
+   on: the "Edit" control becomes a **custom pencil/quill SVG** (no built-in edit glyph), with "Edit
+   Tasks" surviving only as the hover/tooltip text; the pin becomes a **custom pushpin SVG** and the
+   drag handle a **custom six-dot grip SVG** (no built-in covers either); and delete swaps `eraser`
+   → a **custom close SVG** (kept in the same hand-drawn family). All four SVGs are authored, ship at
+   `src/Mod/assets/scribe/textures/icons/`, and are registered at client init as
+   `scribepin`/`scribegrip`/`scribeclose`/`scribeedit`. **Remaining work is button-repointing only**,
+   which is deferred to the affordance changes: `restore-row-affordance-columns` (new — re-adds the
+   pin/delete gutter columns to `ScribeRowElement`, which the S2 merge dropped, then draws these
+   icons) and `lectern-drag-reorder-feedback` (grip). The Edit-control relabel + placement facing
+   quick wins ride the same window.
 3. **v5 HUD pin scope** — when the source document is on an item you're NOT holding, do pinned
    tasks still show (needs a server-pushed "my pins" summary) or only the currently-held
    document's pins?

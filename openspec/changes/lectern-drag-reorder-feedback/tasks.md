@@ -1,3 +1,14 @@
+> **Icon hand-off (2026-07-21, from `add-custom-svg-row-icons`):** the custom SVG code
+> `scribegrip` (a six-dot grip glyph) is now registered at client init and available for the
+> drag handle to draw via `ScribeHoverIconButton`/`DrawIcon` — no asset or registration work
+> needed here, just repoint. See `docs/specs/scribe-icon-svgs.md`. **Also note the architecture
+> has shifted since this change was drafted:** `ScribeBlockRowCell` / `ScribeDragHandleElement`
+> are dead code after the S2 merge; the live row is `ScribeRowElement` (checkbox + text + ruling,
+> no gutters). Re-adding the drag-handle *column* to `ScribeRowElement` is upstream of this
+> feedback work — the pin/delete columns are owned by the new `restore-row-affordance-columns`
+> change, and the drag handle rides alongside it. This change (drag *feedback*) still applies on
+> top of a restored, working drag handle.
+
 ## 1. Pre-flight
 
 - [ ] 1.1 Re-read the current drag lifecycle in `src/Mod/GuiDialogScribeLectern.cs`

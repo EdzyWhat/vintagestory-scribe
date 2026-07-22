@@ -1,3 +1,14 @@
+> **Icon + architecture hand-off (2026-07-21, from `add-custom-svg-row-icons`):** the custom SVG
+> codes `scribepin` (pushpin) and `scribeclose` (delete X) are now registered at client init and
+> available for the pin/delete buttons to draw — no asset/registration work here, just repoint.
+> See `docs/specs/scribe-icon-svgs.md`. **BUT this change was drafted against the now-dead
+> `ScribeBlockRowCell` row architecture:** after the S2 merge the live row is `ScribeRowElement`
+> (checkbox + text + ruling only), which has **no pin/delete gutter columns** — so this change's
+> icon-column *width-scaling* tasks (§6) assume columns that no longer exist. Re-adding those
+> columns to `ScribeRowElement` + `RowTextLayout` is now owned by the new
+> `restore-row-affordance-columns` change (visuals) and its follow-up wiring (delete/pin
+> messages). Rescope or defer §6 against that reality before implementing.
+
 ## 1. Prerequisites (block everything else)
 
 - [x] 1.1 Confirm with the user whether design.md's Decision 2 (Read-view toggle applies

@@ -665,16 +665,43 @@ nothing, silently.
 `api.Gui.Icons.DrawIcon(ctx, icon, …, Font.Color)` each render pass — so it goes through exactly
 this path; there is no separate SVG route for buttons.
 
-**Fix pattern (to use a custom SVG icon):** register it into `CustomIcons` at client init, using
-the helper the class provides:
+**Fix pattern (to use a custom SVG icon):** register it into `CustomIcons` at client init — but
+**NOT** with the obvious `CustomIcons[code] = capi.Gui.Icons.SvgIconSource(assetLocation)`. That
+one-liner is a **trap that crashes the client** (see the two gotchas below). The working pattern
+re-resolves the asset on every draw, capturing the `AssetLocation`, not the asset (Scribe's
+`ScribeModSystem.RegisterSvgIcon`):
 ```csharp
-capi.Gui.Icons.CustomIcons["scribepin"] =
-    capi.Gui.Icons.SvgIconSource(new AssetLocation("scribe:icons/pin.svg"));
+capi.Gui.Icons.CustomIcons[code] = (ctx, x, y, w, h, rgba) =>
+{
+    var asset = capi.Assets.TryGet(loc, loadAsset: true);   // re-fetch each draw; reloads if unloaded
+    if (asset?.Data is null) return;                        // never throw — draw nothing if missing
+    capi.Gui.Icons.SvgIconSource(asset)(ctx, x, y, w, h, rgba);
+};
 ```
-`IconUtil.SvgIconSource(AssetLocation)` returns an `IconRendererDelegate` that does
-`capi.Assets.TryGet(loc)` then `capi.Gui.DrawSvg(asset, …)`. A wrong/absent asset path fails the
-**same silent way** (`TryGet` → null → delegate draws nothing), so prove one icon's path end-to-
-end before authoring a set. After registration, any button using that code string renders the SVG.
+`IconUtil.SvgIconSource(AssetLocation)` internally does `capi.Assets.TryGet(loc)` once then
+`capi.Gui.DrawSvg(asset, …)`. After registration, any button using that code string renders the SVG.
+
+**Gotcha 1 — the asset MUST live under a real `AssetCategory`, i.e. `textures/icons/…`, not a bare
+`icons/…`.** VS only scans assets under its 16 hardcoded `AssetCategory` codes (`AssetCategory.categories`:
+blocktypes, config, dialog, entities, itemtypes, lang, patches, recipes, shaders, shaderincludes,
+shapes, sounds, textures, music, worldgen, worldproperties — there is **no `icons` category**). A
+file under `assets/scribe/icons/pin.svg` is never loaded → `TryGet` returns null → silent empty
+button. Vanilla stores every SVG icon at `textures/icons/` (e.g. `game:textures/icons/copy.svg`);
+match that: `assets/scribe/textures/icons/pin.svg`, resolved as
+`new AssetLocation("scribe", "textures/icons/pin.svg")`.
+
+**Gotcha 2 — do NOT capture the `IAsset`; it gets unloaded and the delegate then CRASHES.** The
+naive `SvgIconSource(asset)` captures the asset object and re-reads `asset.Data` at *draw* time.
+But `AssetManager.UnloadAssets()` runs after startup and sets `Data = null` on every non-patched
+asset (decompiled 2026-07-21; only `IsPatched` assets are spared). So an icon registered at
+`StartClientSide` has real bytes then, but by the first compose (seconds later) `.Data` is null and
+`SvgLoader.rasterizeSvg` throws `ArgumentNullException("Asset Data is null. Is the asset loaded?")`,
+crashing the client mid-compose (not a catchable silent failure — a hard crash to desktop). Fix:
+re-resolve via `TryGet(loc, loadAsset: true)` inside the delegate, which reloads an unloaded asset
+on demand (`if (!value.IsLoaded() && loadAsset) value.Origin.TryLoadAsset(value)`). Compose is
+infrequent (open/recompose, not per-frame) so the re-fetch is cheap. **Diagnosing tip:** log
+`TryGet(...).Data?.Length` at register time — if it prints bytes at register but you still crash on
+draw, it's this unload race, not a path problem.
 
 **Tinting:** `DrawIcon` forwards the button's color (`Font.Color` for a toggle button) and the
 interface method is `DrawSvg(IAsset, ImageSurface, int posx, int posy, int width, int height,

@@ -282,9 +282,90 @@ Concrete candidates to raise:
 - **Delete** is `"eraser"` — thematically on-brand for a writing tool (keep?) vs. a
   conventional "x"/`wpCross`.
 - **Add Task** `"plus"` — fine, likely keep.
-Output: a short list of small follow-up swap tasks (each trivial: change one `AddIconButton`
-code string, or add one SVG asset + repoint). **Effort:** the session itself is trivial; the
-follow-ups are each trivial-to-small.
+Output: a short list of small follow-up swap tasks. **Effort:** the session itself is trivial;
+the follow-ups are trivial-to-small — but note the custom-SVG ones are **register-icon +
+repoint**, not a one-line code-string change (see the corrected mechanism note below).
+
+#### Audit decisions (session held 2026-07-21)
+
+Per-icon verdicts:
+- **Add Task `"plus"` → KEEP.** Universal "add" glyph, reads correctly, no change.
+- **Pin `"wpCircle"` → custom pushpin SVG.** No built-in pin glyph exists; `wpCircle` reads as
+  a dot. Author a pushpin SVG and register it (see mechanism note below). (Resolves #6.)
+- **Drag handle `"::"` (text) → custom grip SVG.** No built-in grip glyph. Author the
+  conventional six-dot (⠿) grip SVG and replace the `ScribeDragHandleElement` text with an
+  icon button. (Resolves #6.)
+- **Delete `"eraser"` → custom close SVG.** Convention wins over the writing-tool pun; the
+  eraser risks reading as "clear the text" rather than "remove this row." **Superseding update
+  2026-07-21:** rather than the built-in font `"x"`, author a **custom close glyph** so all four
+  row/control icons share one hand-drawn family (matched line quality/ink) instead of mixing a
+  font glyph among three custom SVGs. See `scribe-icon-svgs.md`. (Built-in `"wpCross"` — itself a
+  `CustomIcons` vector cross, confirmed in decompile — remains the zero-art fallback if the custom
+  set is deferred.)
+- **"Edit" → "Edit Tasks" relabel → custom edit/pencil SVG (icon-only).** No built-in
+  pencil/edit glyph; go icon-only with a custom quill/pencil SVG to match the chrome-redesign
+  direction. The words "Edit Tasks" survive only as the lang string behind the tooltip/hover.
+  (This is the decision ROADMAP Open decision #2 was blocked on — now unblocked.)
+
+**Tooltip invariant (session decision 2026-07-21): every icon gets a hover tooltip.** This mod
+already tooltips its icons via the built-in `composer.AddHoverText(langText, CairoFont.
+WhiteSmallText(), (int)config.HoverTextWidth, bounds.FlatCopy())` — pin (`ScribeBlockRowCell.cs:226`),
+delete (`:236`), and every toolbar option (`GuiDialogScribeLectern.cs:801`, off `option.LangKey`)
+already have one. Treat "every icon has an `AddHoverText` driven off a `scribe:` lang key" as a
+standing invariant for all the swaps below, not a separate work item: the cost is one line per
+icon and matches the existing pattern. This matters most for the icons going **icon-only**
+(Edit, drag-handle grip) — the tooltip is where their words survive. Caveats: hover tooltips
+are **mouse-only** (a controller/keyboard player never sees them, so the glyph itself must still
+read well — the tooltip complements the glyph choice, it doesn't replace it); and the drag
+handle is a custom `ScribeDragHandleElement`, so its tooltip is a sibling `AddHoverText` on the
+same bounds (as pin/delete do), not a property on the element.
+
+**Mechanism (corrected — decompiled 2026-07-21; the earlier "`Gui.DrawSvg` fallthrough" claim
+was wrong).** `IconUtil.DrawIconInt` has **no default case**: an unknown code draws *nothing,
+silently*. A custom SVG must be **registered at client init** into `capi.Gui.Icons.CustomIcons`
+via `SvgIconSource(new AssetLocation("scribe:icons/…"))`; the button's code string then resolves
+to that entry (`GuiElementToggleButton` → `Icons.DrawIcon`, confirmed). Tinting is **resolved**:
+`DrawSvg` flood-recolors the SVG with the button's `Font.Color`, so author each glyph **single
+flat color** and let the button supply the ink (hover recolor is free). Full details + the one
+remaining unknown (exact `capi.Assets.TryGet` path for the asset location) live in
+`scribe-icon-svgs.md`.
+
+**The custom SVG art is specced separately in `docs/specs/scribe-icon-svgs.md`** — per-glyph
+geometry for the four icons, plus a **hand-inked aesthetic** direction (irregular quill strokes,
+thick/thin, imperfect joins — matching VS's handmade-with-primitive-tools fiction, NOT a clean
+geometric icon font), sized for ~15px→40px legibility. **All four row/control icons are custom**
+(including close/delete, task #1) so they share one hand-drawn family rather than mixing in a
+built-in font glyph.
+
+**Follow-up swap tasks** (each is **register icon + repoint button + keep/add tooltip**, not a
+one-line string swap; the custom-SVG tasks share the one-time `CustomIcons` registration setup —
+prove the asset path with one icon first, per `scribe-icon-svgs.md`):
+
+0. **Drag-handle tooltip** (no asset, no swap): add a sibling `AddHoverText` on the drag-handle
+   bounds at `ScribeBlockRowCell.cs:176`/`:181` with a new `scribe:scribe-gui-reorder` lang key.
+   The one existing icon with no tooltip today; closes the coverage gap independently of the
+   grip swap (#3). Trivial. Rides the S2 window (touches `ScribeBlockRowCell`), no other dep.
+1. **Delete → custom close SVG**: author `close.svg`, register it in `CustomIcons`, repoint
+   `ScribeBlockRowCell.cs:231` `"eraser"` → the close code. Existing `scribe-gui-delete` tooltip
+   (`:236`) stays. Small. (Zero-art fallback: repoint to built-in `"wpCross"` instead — no asset,
+   no registration — if the custom set is deferred.)
+2. **Pin → pushpin SVG**: author `pin.svg`, register it, repoint `ScribeBlockRowCell.cs:221`
+   `"wpCircle"` → the pin code. Existing `scribe-gui-pin` tooltip (`:226`) stays. Small. **Do this
+   one first of the custom-SVG set** — it carries the one-time `CustomIcons` registration + asset-
+   path proving-out (a wrong path draws nothing, silently).
+3. **Drag handle → grip SVG**: author `grip.svg`, register it, replace the `"::"`
+   `ScribeDragHandleElement` at `ScribeBlockRowCell.cs:176` with an icon button on the grip code.
+   Keep (or add, if #0 hasn't landed) the `scribe-gui-reorder` tooltip. Small.
+4. **Edit relabel → pen SVG**: author `edit.svg`, register it, convert the read-view "Edit"
+   `AddSmallButton` (`GuiDialogScribeLectern.cs:571`) to an icon button on the edit code, and
+   add an `AddHoverText` on its bounds using the same `scribe-gui-switch-to-editor` key (value
+   "Edit Tasks") the button used to display — that lang string now lives on only in the tooltip.
+   Small.
+
+Sequencing: these prefer to land after S2's layout settles (they touch `ScribeBlockRowCell` /
+the read-view compose, which S2 is reworking). The **`wpCross` fallback for delete** (#1's
+no-asset variant) is the only one with no asset/registration dependency, so it could go anytime;
+the custom-SVG variants all wait on the one-time registration setup landing with #2.
 
 ---
 
@@ -329,6 +410,9 @@ follow-ups are each trivial-to-small.
    horizontal text-size slider survive in a narrow vertical rail, or become a stepper/popout?
 3. **Should `blockhelp-scribelectern-edit` (the shift+right-click tooltip, also "Edit") change
    to "Edit Tasks" too**, or only the in-GUI button? (Roadmap names only the button.)
+   **RESOLVED 2026-07-21: yes, change it to "Edit Tasks" too.** With the in-GUI control going
+   icon-only (see item 8's audit decisions), the world-interaction tooltip becomes the primary
+   place the words appear, so it should carry the fuller wording for consistency.
 4. **Gutter narrowing — formula (B, damped scaling) vs. approach (A, grow list width to keep
    text proportion)?** The recommendation is the damped `ScaledGutter` formula, but if S2's
    unified width already feels roomy, growing the width may be simpler. Which does the user
@@ -338,3 +422,6 @@ follow-ups are each trivial-to-small.
    saves to migrate), or is a code-only facing approach preferred to keep the block code stable?
 6. **Pin/drag-handle glyphs:** accept a custom SVG asset for a proper pin + grip (best fit), or
    stay within the built-in set (`wpCircle`, `"::"`) to avoid authoring art? (Feeds item 8.)
+   **RESOLVED 2026-07-21: custom SVG for both** — a pushpin SVG for the pin and a six-dot grip
+   SVG for the drag handle (no built-in covers either). See item 8's audit decisions and
+   follow-up tasks #2 and #3.
