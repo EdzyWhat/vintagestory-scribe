@@ -5,37 +5,45 @@ using Vintagestory.API.Client;
 namespace Scribe;
 
 /// <summary>
-/// A single-line <see cref="GuiElementTextInput"/> for the editor's edit-in-place row, subclassed
-/// to add the desktop caret conventions the base element is missing on macOS, plus cross-row
-/// keyboard navigation.
+/// A multi-line editor row input, subclassing <see cref="GuiElementTextArea"/> so a long row
+/// WRAPS (and grows in height) the same way its static <see cref="ScribeRowElement"/> label does,
+/// instead of the single-line horizontal scroll a <c>GuiElementTextInput</c> gave (which collapsed
+/// a wrapped row to one line on focus). <c>GuiElementTextArea</c> sets <c>multilineMode = true</c>
+/// and ships an <c>Autoheight</c> mechanism (<c>TextChanged</c> re-measures <c>Bounds.fixedHeight</c>
+/// via <c>GetMultilineTextHeight</c> on every keystroke); the dialog wires that height change back
+/// into the row list so the focused row grows and the rows below it shift (see
+/// <c>GuiDialogScribeLectern.OnEditInputTextChanged</c>).
 ///
-/// The spike (recorded in VSAPI-NOTES.md "Text-input caret / selection conventions") found that
-/// <c>GuiElementEditableTextBase</c> already implements selection, word-skip, clipboard, and
-/// line-jump -- but its caret navigation is gated on <c>CtrlPressed</c> only (never
-/// <c>CommandPressed</c>), and its <c>OnKeyDownInternal</c> hard-returns on any <c>AltPressed</c>.
-/// So on a Mac, Cmd+Arrow (line ends) and Alt/Option+Arrow (word-skip) do nothing. Rather than
-/// reimplement caret/selection logic, this override <b>translates the Mac modifier combos into the
-/// Windows-keyed combos the base already handles</b>, then delegates to <c>base.OnKeyDown</c>:
+/// Keyboard model (Enter/Shift+Enter/Tab), all handled BEFORE delegating to the base:
 /// <list type="bullet">
-///   <item>Cmd+Left / Cmd+Right -> rewritten to Home / End (base moves to line start/end).</item>
-///   <item>Alt/Option+Left / Right -> Alt cleared and Ctrl set, so the base's word-skip
-///     (<c>MoveCursor(dir, wholeWord: true)</c>) runs instead of the Alt early-return.</item>
+///   <item><b>Plain Enter / keypad Enter</b> -> commit + advance to the next row. ALWAYS consumed,
+///     never delegated -- in <c>multilineMode</c> the base's <c>OnKeyEnter()</c> would otherwise
+///     insert a newline. Enter is a commit gesture here, never a text key.</item>
+///   <item><b>Shift+Enter</b> -> deliberately NOT consumed: it falls through to the base so
+///     <c>OnKeyEnter()</c> inserts a hard line break, and the auto-height wiring grows the row.</item>
+///   <item><b>Shift+Tab</b> -> commit + retreat to the previous row (always consumed).</item>
+///   <item><b>Plain Tab</b> -> consumed as a no-op (a tab glyph inside a task line is unwanted, and
+///     multiline mode would otherwise insert one).</item>
+///   <item><b>Esc</b> -> deliberately NOT intercepted: the base leaves KeyCode 50 unhandled, so it
+///     bubbles up and closes the dialog (the wanted panic-close, decided 2026-07-21). Blur on close
+///     still commits the pending edit, so nothing typed is lost.</item>
 /// </list>
-/// <c>ShiftPressed</c> is left untouched on the rewritten event, so the base's shift-extend-select
-/// keeps working for every one of these. Enter / Shift+Tab are intercepted <i>before</i> delegating
-/// and surfaced to the dialog via callbacks (row navigation is inherently cross-element, so it
-/// belongs to the dialog, not this element). <b>Esc is deliberately NOT intercepted</b> -- it falls
-/// through to the base, whose <c>OnKeyDownInternal</c> leaves KeyCode 50 unhandled, so it bubbles up
-/// and closes the whole dialog. That is the wanted "panic-close" behavior (decided 2026-07-21 after
-/// playtest: a fast exit matters more than an in-place revert). Blur-commit fires on close, so the
-/// focused row's pending edit is saved on the way out -- Esc is a commit-and-close, not a discard.
 ///
-/// This subclass also <b>drops the base input's embossed border</b> (<see cref="ComposeTextElements"/>):
-/// the row is drawn by <see cref="ScribeRowElement"/>'s lined-paper look, and a boxed input border
-/// over one row read as the text "jumping" on focus (playtest 2026-07-21). Only the subtle focused
-/// highlight background remains.
+/// The spike (VSAPI-NOTES "Text-input caret / selection conventions") found the shared base
+/// <c>GuiElementEditableTextBase</c> already implements selection, word-skip, clipboard, and
+/// line-jump -- but its caret nav is gated on <c>CtrlPressed</c> only (never <c>CommandPressed</c>)
+/// and its <c>OnKeyDownInternal</c> hard-returns on any <c>AltPressed</c>. So on a Mac, Cmd+Arrow
+/// (line ends) and Alt/Option+Arrow (word-skip) do nothing. Rather than reimplement caret logic,
+/// this override <b>translates the Mac modifier combos into the Windows-keyed combos the base
+/// already handles</b> (see <see cref="TranslateMacCaretModifiers"/>), then delegates.
+///
+/// This subclass also <b>drops the base's embossed border + dark fill box</b> (see
+/// <see cref="ComposeTextElements"/>): the row is drawn by <see cref="ScribeRowElement"/>'s
+/// lined-paper look, and a boxed input border over one row read as the text "jumping" on focus
+/// (playtest 2026-07-21). Only a subtle focused-highlight background remains -- built here as this
+/// element's OWN texture because <c>GuiElementTextArea</c>'s highlight members are private to it.
 /// </summary>
-public sealed class ScribeRowTextInput : GuiElementTextInput
+public sealed class ScribeRowTextInput : GuiElementTextArea
 {
     // GlKeys codes (confirmed via decompile of GlKeys): Up=45, Down=46, Left=47, Right=48,
     // Enter=49, Escape=50, Tab=52, Home=58, End=59, KeypadEnter=82.
@@ -49,8 +57,8 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     private const int KeyEnd = 59;
     private const int KeyKeypadEnter = 82;
 
-    /// <summary>Enter (or keypad Enter) pressed while this row is focused: commit + advance to the
-    /// next row. Return true if the dialog handled it.</summary>
+    /// <summary>Plain Enter (or keypad Enter) pressed while this row is focused: commit + advance to
+    /// the next row.</summary>
     private readonly Func<bool> onCommitAndAdvance;
 
     /// <summary>Shift+Tab pressed: commit + retreat to the previous row.</summary>
@@ -59,6 +67,12 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     /// <summary>Focus lost without an Enter/Shift+Tab (e.g. the player clicked away): commit
     /// the row's edit. May be null when the dialog does not need a blur hook.</summary>
     private readonly Action? onBlur;
+
+    /// <summary>This element's own faint focused-highlight texture. The base
+    /// <see cref="GuiElementTextArea"/> has an equivalent but it's private, so we build our own
+    /// (and skip the base's emboss+fill box) in <see cref="ComposeTextElements"/>.</summary>
+    private LoadedTexture focusHighlightTexture;
+    private ElementBounds? focusHighlightBounds;
 
     public ScribeRowTextInput(
         ICoreClientAPI capi,
@@ -73,58 +87,49 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
         this.onCommitAndAdvance = onCommitAndAdvance;
         this.onCommitAndRetreat = onCommitAndRetreat;
         this.onBlur = onBlur;
+        focusHighlightTexture = new LoadedTexture(capi);
     }
 
     /// <summary>
-    /// Skips the base <see cref="GuiElementTextInput.ComposeTextElements"/>' embossed border + dark
-    /// fill so the floating input has no visible box -- only the focused-highlight background (drawn
-    /// separately in <c>RenderInteractiveElements</c> from <c>highlightTexture</c>) remains. The base
-    /// builds the highlight texture here and ends by calling the internal <c>RecomposeText</c>; we
-    /// can't call that internal from this assembly, but the dialog always calls <c>SetValue</c> on
-    /// this input right after Compose (GuiDialogScribeLectern compose tail), and <c>SetValue</c> ->
-    /// <c>LoadValue</c> -> <c>TextChanged</c> -> <c>RecomposeText</c> rebuilds the text texture -- so
-    /// the glyphs still render. We reproduce only the highlight-texture build from the base.
+    /// Builds only the subtle focused-highlight texture (a faint translucent white shown while
+    /// <c>HasFocus</c>), skipping <see cref="GuiElementTextArea"/>'s <c>EmbossRoundRectangleElement</c>
+    /// + dark <c>0.2</c> fill that together drew the boxed border. We build our own texture because
+    /// the base's <c>highlightTexture</c>/<c>GenerateHighlight</c> are private to
+    /// <c>GuiElementTextArea</c>. The base ends with the internal <c>RecomposeText()</c> (which builds
+    /// the text texture); we can't call it from this assembly, but the dialog always calls
+    /// <c>SetValue</c> on this input right after Compose (see the compose tail in
+    /// <c>GuiDialogScribeLectern.ComposeEditorView</c>), and <c>SetValue</c> -> <c>LoadValue</c> ->
+    /// <c>TextChanged</c> -> <c>RecomposeText</c> rebuilds the text texture -- so the glyphs render.
     /// </summary>
     public override void ComposeTextElements(Context ctx, ImageSurface surface)
     {
-        // Build the focused-highlight texture exactly as the base does (a faint translucent white
-        // fill shown only while HasFocus), but omit the base's EmbossRoundRectangleElement + the
-        // dark ElementRoundRectangle fill that together drew the boxed border.
-        var highlightSurface = new ImageSurface(Format.Argb32, (int)Bounds.OuterWidth, (int)Bounds.OuterHeight);
-        Context highlightCtx = genContext(highlightSurface);
-        highlightCtx.SetSourceRGBA(1.0, 1.0, 1.0, 0.2);
-        highlightCtx.Paint();
-        generateTexture(highlightSurface, ref highlightTexture);
-        highlightCtx.Dispose();
-        highlightSurface.Dispose();
+        var hlSurface = new ImageSurface(Format.Argb32, (int)Bounds.OuterWidth, (int)Bounds.OuterHeight);
+        Context hlCtx = genContext(hlSurface);
+        hlCtx.SetSourceRGBA(1.0, 1.0, 1.0, 0.2);
+        hlCtx.Paint();
+        generateTexture(hlSurface, ref focusHighlightTexture);
+        hlCtx.Dispose();
+        hlSurface.Dispose();
 
-        highlightBounds = Bounds.CopyOffsetedSibling().WithFixedPadding(0.0, 0.0)
-            .FixedGrow(2.0 * Bounds.absPaddingX, 2.0 * Bounds.absPaddingY);
-        highlightBounds.CalcWorldBounds();
+        focusHighlightBounds = Bounds.FlatCopy();
+        focusHighlightBounds.CalcWorldBounds();
         // NOTE: base ends with RecomposeText() here; we rely on the dialog's post-Compose SetValue
         // to trigger it (see summary). If that call is ever removed, the input would render blank.
     }
 
     /// <summary>
-    /// Renders the input with two clip corrections the base class doesn't make:
+    /// Renders the focused-highlight (when focused) then the base text/selection/caret.
     ///
-    /// <para><b>1. Skip drawing when the row is scrolled fully out of the clip window.</b> The base
-    /// <see cref="GuiElementTextInput"/> clips its OWN text to its OWN bounds (its own
-    /// <c>GlScissor</c>), NOT to the enclosing <c>BeginClip</c> window -- so a focused input whose
-    /// row is scrolled outside the visible list would still paint its text at that off-screen
-    /// position, unclipped by the dialog (the "new task drawn below the box" bug, playtest
-    /// 2026-07-21T20-58-36). Rendering is independent of focus/hit-testing, so skipping the draw
-    /// leaves the input fully focusable and typable; it reappears when its row scrolls back in.
-    /// (Vertical overlap only -- the list scrolls only vertically. Uses <c>renderY</c>, which
-    /// tracks the parent's scroll <c>fixedY</c> shift; see VSAPI-NOTES scroll two-pass note.)</para>
-    ///
-    /// <para><b>2. Re-assert the dialog's clip after the base renders.</b> The base ends with
-    /// <c>GlScissorFlag(false)</c>, a GLOBAL <c>GL.Disable(GL_SCISSOR_TEST)</c> in
-    /// <c>ClientPlatformWindows</c> that does NOT restore the enclosing <c>BeginClip</c> scissor on
-    /// the render API's <c>ScissorStack</c> -- so everything drawn after this input would render
-    /// UNCLIPPED (VSAPI-NOTES "text input ... bleeds out unclipped"). Push-then-pop the clip bounds
-    /// still on the stack top: <c>PopScissor</c> re-issues that scissor + re-enables the flag,
-    /// restoring the dialog's clip for later elements.</para>
+    /// <para><b>Off-screen skip.</b> When this row is scrolled fully outside the enclosing
+    /// <c>BeginClip</c> window, draw nothing. Unlike <c>GuiElementTextInput</c> (whose
+    /// <c>GlScissorFlag(false)</c> globally disabled the scissor and caused a "new task drawn below
+    /// the box" bleed, playtest 2026-07-21T20-58-36), <c>GuiElementTextArea</c> does NOT touch the
+    /// scissor -- so the ambient dialog clip already clips this input's text. The skip is therefore
+    /// defensive rather than load-bearing here, but it's cheap and focus-safe (the input stays
+    /// focusable/typable and reappears when its row scrolls back in). Uses <c>renderY</c>, which
+    /// tracks the parent's scroll <c>fixedY</c> shift; vertical overlap only (the list scrolls only
+    /// vertically). (The old scissor re-assert correction that <c>GuiElementTextInput</c> needed is
+    /// dropped: the base no longer disables the scissor, so there's nothing to restore.)</para>
     /// </summary>
     public override void RenderInteractiveElements(float deltaTime)
     {
@@ -134,17 +139,17 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
             double bottom = top + Bounds.InnerHeight;
             double clipTop = InsideClipBounds.renderY;
             double clipBottom = clipTop + InsideClipBounds.InnerHeight;
-            // Fully above or fully below the visible window -> don't draw (would bleed unclipped).
+            // Fully above or fully below the visible window -> don't draw.
             if (bottom <= clipTop || top >= clipBottom) return;
         }
 
-        base.RenderInteractiveElements(deltaTime);
-
-        if (InsideClipBounds != null)
+        if (HasFocus && focusHighlightTexture.TextureId != 0 && focusHighlightBounds != null)
         {
-            api.Render.PushScissor(InsideClipBounds);
-            api.Render.PopScissor();
+            api.Render.GlToggleBlend(true);
+            api.Render.Render2DTexture(focusHighlightTexture.TextureId, focusHighlightBounds);
         }
+
+        base.RenderInteractiveElements(deltaTime);
     }
 
     public override void OnFocusLost()
@@ -160,42 +165,55 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
     {
         if (!HasFocus) return;
 
-        // ---- Cross-row navigation / revert: handle before the base sees the key ----
+        // ---- Cross-row navigation / newline / Tab: handle before the base sees the key ----
 
-        // Shift+Tab retreats. (Plain Tab is intentionally left to the base -- which leaves it
-        // unhandled for a single-line input -- so it doesn't fight normal focus traversal.)
+        // Shift+Tab retreats. Always consume it: in multiline mode the base treats Tab (52) as an
+        // insertable character, so falling through would type a tab glyph.
         if (args.KeyCode == KeyTab && args.ShiftPressed)
         {
-            if (onCommitAndRetreat())
-            {
-                args.Handled = true;
-                return;
-            }
+            onCommitAndRetreat();
+            args.Handled = true;
+            return;
         }
 
-        // Enter (main or keypad) commits and advances. The base would otherwise defer Enter to the
-        // caller for a single-line input (handled = false), so intercepting it here is safe.
-        if (args.KeyCode == KeyEnter || args.KeyCode == KeyKeypadEnter)
+        // Plain Tab: consume as a no-op (don't insert a tab glyph; we don't use Tab for traversal).
+        if (args.KeyCode == KeyTab)
         {
-            if (onCommitAndAdvance())
-            {
-                args.Handled = true;
-                return;
-            }
+            args.Handled = true;
+            return;
         }
 
-        // Escape is deliberately NOT handled here: the base leaves KeyCode 50 unhandled, so it
-        // bubbles up and closes the dialog (the wanted panic-close -- decided 2026-07-21). Blur on
-        // close still commits the pending edit, so nothing typed is lost.
+        // Plain Enter (main or keypad) commits and advances. ALWAYS consume -- if we let it fall
+        // through, the base's multiline OnKeyEnter() would insert a newline. Enter is never a text
+        // key here.
+        if ((args.KeyCode == KeyEnter || args.KeyCode == KeyKeypadEnter) && !args.ShiftPressed)
+        {
+            onCommitAndAdvance();
+            args.Handled = true;
+            return;
+        }
+
+        // Shift+Enter: deliberately NOT intercepted -- it falls through to the base so OnKeyEnter()
+        // inserts a hard line break. The dialog's auto-height wiring then grows the row.
+
+        // Escape is deliberately NOT handled here either: the base leaves KeyCode 50 unhandled, so
+        // it bubbles up and closes the dialog (panic-close). Blur on close still commits the edit.
 
         // ---- Mac caret-convention translation, then delegate to the base ----
         base.OnKeyDown(api, TranslateMacCaretModifiers(args));
     }
 
+    public override void Dispose()
+    {
+        base.Dispose();
+        focusHighlightTexture?.Dispose();
+    }
+
     /// <summary>
     /// Rewrites a key event so the base's Windows-keyed caret navigation responds to the Mac
     /// modifier idioms. Only touches Left/Right arrow events carrying Cmd or Alt; every other event
-    /// is returned unchanged. Shift is always preserved so selection-extend still works.
+    /// (including a plain Shift+Enter) is returned unchanged. Shift is always preserved so
+    /// selection-extend still works.
     /// </summary>
     private static KeyEvent TranslateMacCaretModifiers(KeyEvent args)
     {

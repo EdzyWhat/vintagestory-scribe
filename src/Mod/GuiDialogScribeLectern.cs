@@ -717,6 +717,13 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         if (focusedEditIndex is { } idx && editInput is not null && idx >= 0 && idx < blocks.Count)
         {
             suppressBlurCommit = true;
+            // Re-baseline the multi-line height-change gate to the row we just seeded BEFORE
+            // SetValue: SetValue -> OnTextChanged -> OnEditInputTextChanged compares against this
+            // baseline, so setting it first means seeding the input at its own current height fires
+            // no spurious relist (and a focus move to a shorter/taller row doesn't fire on the stale
+            // previous row's height). The first real wrap/newline that changes THIS row's height
+            // then triggers the relist.
+            editRowMeasuredHeight = rowHeights[idx];
             editInput.SetValue(blocks[idx].Text);
             // FocusElement (not OnFocusGained directly) so Compose()'s default
             // focusFirstElement:true focus is properly transferred rather than leaving two
@@ -758,7 +765,9 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         if (focusedEditIndex == index) return;
 
         // Push any pending edit from the row we're leaving before moving focus (task 4.3-style
-        // commit-on-leave). FlushIfDirty is a no-op if nothing changed.
+        // commit-on-leave). Normalize (trailing-trim) that row first, then flush. FlushIfDirty is a
+        // no-op if nothing changed.
+        if (focusedEditIndex is { } leavingIdx) NormalizeRowOnCommit(leavingIdx);
         FlushIfDirty();
 
         focusedEditIndex = index;
@@ -773,16 +782,44 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// the focused row's block and mark dirty (the autosave tick / commit path serializes it).</summary>
     private void OnEditInputTextChanged(string text)
     {
-        if (focusedEditIndex is not { } index) return;
-        scratchDocument?.SetBlockText(index, text);
+        if (focusedEditIndex is not { } index || scratchDocument is null) return;
+        scratchDocument.SetBlockText(index, text);
         isDirty = true;
+
+        // Multi-line grow/shrink (lectern-multiline-edit-input): as typing wraps onto a new line or
+        // a Shift+Enter adds a hard break (or deleting removes one), the focused row's MEASURED
+        // height changes. The input element auto-heights itself (GuiElementTextArea.TextChanged),
+        // but the row list's rowHeights/rowYs/content-height were computed once at compose time --
+        // so recompose the list to re-measure this row, shift the rows below, and update the
+        // scrollbar. Gate on an ACTUAL height change so typing within a line doesn't thrash the
+        // list every keystroke. Measure via the SAME ScribeRowElement.RowHeightFixed the compose
+        // path uses (single source of truth, so label + input agree). Scroll the growing row into
+        // view (reusing the one-shot) and preserve the caret across the recompose.
+        if (index >= 0 && index < scratchDocument.Blocks.Count)
+        {
+            double newHeight = ScribeRowElement.RowHeightFixed(
+                capi, scratchDocument.Blocks[index], clientConfig.RowListWidth, RowFont(), clientConfig);
+            if (editRowMeasuredHeight is not { } prev || System.Math.Abs(prev - newHeight) > 0.5)
+            {
+                editRowMeasuredHeight = newHeight;
+                scrollFocusedRowIntoView = true;
+                RequestRecompose();
+            }
+        }
     }
+
+    /// <summary>The last measured height of the focused edit row, tracked so
+    /// <see cref="OnEditInputTextChanged"/> only recomposes the row list when a wrap/newline
+    /// actually changes the row's height (not on every keystroke). Reset whenever focus moves to a
+    /// different row (in <see cref="ComposeEditorView"/>).</summary>
+    private double? editRowMeasuredHeight;
 
     /// <summary>Enter: commit the focused row and advance to the next (task 4.1).</summary>
     private bool OnEditCommitAndAdvance()
     {
         if (focusedEditIndex is not { } index || scratchDocument is null) return false;
 
+        NormalizeRowOnCommit(index);
         FlushIfDirty();
         int count = scratchDocument.Blocks.Count;
         int next = System.Math.Min(index + 1, count - 1);
@@ -795,6 +832,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     {
         if (focusedEditIndex is not { } index || scratchDocument is null) return false;
 
+        NormalizeRowOnCommit(index);
         FlushIfDirty();
         int prev = System.Math.Max(index - 1, 0);
         MoveEditFocusTo(prev);
@@ -807,7 +845,30 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     private void OnEditBlur()
     {
         if (suppressBlurCommit) return;
+        if (focusedEditIndex is { } index) NormalizeRowOnCommit(index);
         FlushIfDirty();
+    }
+
+    /// <summary>
+    /// Commit-time text normalization for a row (lectern-multiline-edit-input): strip trailing blank
+    /// lines and trailing whitespace while PRESERVING interior newlines, e.g. "a\n\nb\n" -> "a\n\nb".
+    /// Prevents a stray trailing Shift+Enter from committing a row that looks empty but stays tall,
+    /// while keeping intentional interior spacing. Applied ONLY at genuine row-commit sites (Enter,
+    /// Shift+Tab, blur, switch-view, close) -- NOT in FlushIfDirty (the 1s autosave tick calls that,
+    /// and trimming mid-typing would fight a player who just pressed Shift+Enter to start a new
+    /// line). No leading trim (a player may indent intentionally). Marks dirty only if it changed
+    /// something.
+    /// </summary>
+    private void NormalizeRowOnCommit(int index)
+    {
+        if (scratchDocument is null || index < 0 || index >= scratchDocument.Blocks.Count) return;
+        string current = scratchDocument.Blocks[index].Text;
+        string trimmed = current.TrimEnd();
+        if (trimmed != current)
+        {
+            scratchDocument.SetBlockText(index, trimmed);
+            isDirty = true;
+        }
     }
 
     /// <summary>Moves the in-place edit focus to <paramref name="index"/> and recomposes so the
@@ -833,7 +894,10 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         int? caretRow = null;
         if (editInput is { HasFocus: true } && editInputIndex is { } prevIndex)
         {
-            caretPos = editInput.CaretPosInLine;
+            // CaretPosWithoutLineBreaks is the caret's absolute offset in the logical text,
+            // independent of how it wraps into display lines -- the right measure now the input is
+            // multi-line (CaretPosInLine alone would drop the caret onto wrapped line 0).
+            caretPos = editInput.CaretPosWithoutLineBreaks;
             caretRow = prevIndex;
         }
 
@@ -849,7 +913,8 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // new row's caret-at-end, not stamp the old position onto it.
         if (caretRow is { } row && row == focusedEditIndex && editInput is not null)
         {
-            editInput.SetCaretPos(System.Math.Min(caretPos, editInput.GetText().Length));
+            // Restore by absolute offset; the setter re-derives the (line, col) from the new wrap.
+            editInput.CaretPosWithoutLineBreaks = System.Math.Min(caretPos, editInput.GetText().Length);
         }
     }
 
@@ -872,6 +937,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         // Flush any pending edit BEFORE releasing the lock: the server processes messages in
         // send order, so releasing first would let the flushed edit arrive lock-less and be
         // silently rejected by ApplyEdit's lock check.
+        if (focusedEditIndex is { } switchIdx) NormalizeRowOnCommit(switchIdx);
         FlushIfDirty();
         SendReleaseLockPacket();
 
@@ -953,6 +1019,7 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
 
         if (IsEditorMode)
         {
+            if (focusedEditIndex is { } closeIdx) NormalizeRowOnCommit(closeIdx);
             FlushIfDirty();
             SendReleaseLockPacket();
         }
