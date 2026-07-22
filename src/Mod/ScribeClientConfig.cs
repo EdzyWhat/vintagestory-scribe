@@ -119,6 +119,13 @@ public sealed class ScribeClientConfig
     /// text/height rather than staying a fixed pixel size.</summary>
     public double ToggleWidth = 28;
 
+    /// <summary>Base (unscaled) horizontal gap between a task's checkbox column and where its text
+    /// begins, so the text/edit-input isn't flush against the checkbox (playtest 2026-07-21).
+    /// Scaled by <see cref="TextSizeScale"/> at the call site (in <see cref="RowTextLayout"/>) so
+    /// the gap tracks row text size. Applied via <c>RowTextLayout.TextX</c>, the single source of
+    /// the text-column offset, so the static label and the floating edit input stay in lockstep.</summary>
+    public double CheckboxTextGap = 8;
+
     /// <summary>Width of a row's delete-icon column.</summary>
     public double DeleteWidth = 32;
 

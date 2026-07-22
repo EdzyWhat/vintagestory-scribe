@@ -126,13 +126,15 @@
       box. Also Enter/Shift+Tab to a row near the top/bottom edge and confirm it scrolls into view.
       *(Confirmed 2026-07-21T21-37-15 — all three sub-checks pass; 6.5 clip half + 6.10 + 6.11 all
       now confirmed.)*
-- [ ] 6.14 **POLISH — add margin between the checkbox and the text.** Playtest 2026-07-21T21-37-15
-      (+ screenshot 2026-07-21T21-37-08-general.png): the row text/input sits flush against the
-      checkbox with no gap, which reads cramped. Add a small horizontal gap between the checkbox
-      column and the text column. This lives in the SHARED `RowTextLayout` (the single source of the
-      text-column X-offset), so fixing it there fixes BOTH the static label (`ScribeRowElement`) and
-      the floating input alignment in one place — they must stay in lockstep (design.md Decision 5).
-      Likely a small config knob (e.g. a checkbox-to-text gap) folded into `RowTextLayout.TextX`.
+- [x] 6.14 **POLISH — add margin between the checkbox and the text (fixed).** Playtest
+      2026-07-21T21-37-15 (+ screenshot 2026-07-21T21-37-08-general.png): the row text/input sat
+      flush against the checkbox. **Fix:** added a `CheckboxTextGap` config knob (default 8,
+      text-size-scaled) folded into the shared `RowTextLayout.TextX`, so BOTH the static label
+      (`ScribeRowElement`) and the floating edit input pick up the gap in lockstep (design.md
+      Decision 5); tasks only (notes have no checkbox). **Retest via 6.15.**
+- [ ] 6.15 Manually test in-game: confirm a comfortable gap between the checkbox and the text/input
+      on task rows, holding for both the static label and the focused input, at a couple of text
+      sizes (the gap should scale with text size, not stay a fixed pixel width).
 - [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
       2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
       across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is

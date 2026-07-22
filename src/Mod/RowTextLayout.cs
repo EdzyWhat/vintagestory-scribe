@@ -31,8 +31,9 @@ public readonly struct RowTextLayout
     /// editor-view checkbox columns line up.</summary>
     public double CheckboxSize { get; }
 
-    /// <summary>Left edge (unscaled) where the row's text begins -- after the checkbox column for a
-    /// task, or the row's left edge for a note.</summary>
+    /// <summary>Left edge (unscaled) where the row's text begins -- after the checkbox column plus
+    /// a small <see cref="ScribeClientConfig.CheckboxTextGap"/> for a task, or the row's left edge
+    /// for a note.</summary>
     public double TextX { get; }
 
     /// <summary>Available text width (unscaled) from <see cref="TextX"/> to the row's right edge.</summary>
@@ -61,7 +62,10 @@ public readonly struct RowTextLayout
     public static RowTextLayout For(double rowWidth, bool isTask, CairoFont font, ScribeClientConfig config)
     {
         double checkboxSize = isTask ? config.ToggleWidth * config.TextSizeScale : 0;
-        double textX = checkboxSize;
+        // Gap between the checkbox and the text so the label/input isn't flush against the box
+        // (tasks only -- a note has no checkbox, so its text starts at the row's left edge).
+        double checkboxTextGap = isTask ? config.CheckboxTextGap * config.TextSizeScale : 0;
+        double textX = checkboxSize + checkboxTextGap;
         double textWidth = rowWidth - textX;
         return new RowTextLayout(0, checkboxSize, textX, textWidth, font);
     }

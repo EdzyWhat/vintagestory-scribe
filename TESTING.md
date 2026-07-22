@@ -191,6 +191,10 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         text input — we need a little bit of margin." Confirmed in the screenshot (text flush to the
         checkbox on the focused row). Fix in the shared `RowTextLayout.TextX` so label + input move
         together. Purely cosmetic; not a regression from the clip fixes.
+      - **Fix staged (awaiting retest) 2026-07-21:** added a `CheckboxTextGap` config knob
+        (default 8, text-size-scaled) folded into the shared `RowTextLayout.TextX`, so both the
+        static label and the floating input inherit the gap in lockstep (tasks only). Retest via
+        6.15 — confirm the gap looks comfortable and scales with text size.
 
 ## skeuomorphic-lectern-gui
 
