@@ -67,10 +67,11 @@
       commits; edits persist across a view switch and reload. *(Confirmed 2026-07-21T14-19-12.)*
 - [x] 6.4 Manually test in-game: focusing/blurring a row shows no baseline/position/size jump
       between the static label and the floating input. *(Confirmed 2026-07-21T14-19-12.)*
-- [ ] 6.5 Manually test in-game: editor rows clip (not pop) at the scroll boundary and scroll
+- [x] 6.5 Manually test in-game: editor rows clip (not pop) at the scroll boundary and scroll
       continuously; read and editor views are the same row-list width. *(Widths + continuous
-      scroll confirmed 2026-07-21T14-19-12; CLIP is broken — chrome/rulings bleed past the top
-      boundary and a new-task input renders below the box. See 6.10/6.11.)*
+      scroll confirmed 2026-07-21T14-19-12; the CLIP half was broken then — chrome/rulings bled
+      past the top boundary and a new-task input rendered below the box — and is now fixed and
+      confirmed via 6.13, 2026-07-21T21-37-15. See 6.10/6.11 for the fixes.)*
 - [x] 6.6 Confirm no regression to the read view (checkbox toggle, ruling, clipping) after the
       shared-width and scroll-path changes. *(Confirmed 2026-07-21T14-19-12.)*
 
@@ -136,8 +137,12 @@
       on task rows, holding for both the static label and the focused input, at a couple of text
       sizes (the gap should scale with text size, not stay a fixed pixel width). *(Confirmed by the
       user in-session 2026-07-21: margin looks good.)*
-- [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
-      2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
+- [x] 6.12 **DEFERRED to its own change — not S2 scope.** *(Decided 2026-07-21.)* Ctrl+Enter
+      commit-and-insert-below is a behavior-adding feature beyond S2's edit-in-place scope, so it
+      leaves S2 as a carved-out follow-up (`openspec-propose` when picked up), tracked in the
+      ROADMAP "UX lessons" note. The design below is the settled decision to carry into that
+      proposal; checking this box marks S2's decision recorded, not the feature implemented.
+      The tester asked for "add a task below the one I'm editing." The convention
       across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is
       consistent: **Enter/a keyboard gesture with the cursor in a row inserts the new item directly
       below the current one**, while the **"+" / Add button appends at the bottom**. Overloading the
@@ -156,7 +161,12 @@
 
 ## 7. Close out
 
-- [ ] 7.1 Update `docs/session-notes/` handoff (or mark S2 complete) and delete the now-stale
-      S1 handoff note if fully superseded.
-- [ ] 7.2 Note in the change that the `row-list-rework` branch is now mergeable (seed gone,
-      views unified) for the user's merge decision.
+- [x] 7.1 Update `docs/session-notes/` handoff (or mark S2 complete) and delete the now-stale
+      S1 handoff note if fully superseded. *(Done 2026-07-21: wrote
+      `2026-07-21-S2-done-handoff.md`; deleted the superseded S1-done handoff, the S2
+      implementation plan, and the older scroll-and-rework note.)*
+- [x] 7.2 Note in the change that the `row-list-rework` branch is now mergeable (seed gone,
+      views unified) for the user's merge decision. *(Done 2026-07-21: recorded in the S2-done
+      handoff "Merge readiness" section — seed deleted, read/editor views unified onto one row
+      element + shared `RowListWidth`, all S1+S2 manual tests confirmed, no known regressions;
+      user makes the merge call.)*
