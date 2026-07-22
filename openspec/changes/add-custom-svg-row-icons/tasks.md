@@ -34,11 +34,16 @@
 
 ## 3. In-game verification
 
-- [ ] 3.1 Restage (`./build/restage.sh Debug`) and fully relaunch the client.
-- [ ] 3.2 Manually verify each of the four codes renders (a throwaway diagnostic draw on the read row,
+- [x] 3.1 Restage (`./build/restage.sh Debug`) and fully relaunch the client. *(Done 2026-07-21.)*
+- [x] 3.2 Manually verify each of the four codes renders (a throwaway diagnostic draw on the read row,
   as used in the spike, is acceptable) — confirm no crash after the engine unloads asset data (i.e. the
-  icon still draws seconds after open, not just at first paint).
-- [ ] 3.3 Remove any diagnostic draw code once confirmed; leave only the registration.
+  icon still draws seconds after open, not just at first paint). *(Confirmed 2026-07-21 via
+  screenshots/debug/2026-07-21_22-19-03_custom-svg-row-icons-diagnostic-strip.png: all four icons
+  — pushpin, six-dot grip, close X, pen/nib — draw as clean silhouettes in the read-view diagnostic
+  strip and remain drawn after the dialog has been open past the asset-unload point. No crash.)*
+- [x] 3.3 Remove any diagnostic draw code once confirmed; leave only the registration. *(Done
+  2026-07-21: removed the temp four-icon diagnostic strip from ComposeReadView; Debug build clean 0/0;
+  grep confirms no diagnostic code remains.)*
 
 ## 4. Documentation
 
