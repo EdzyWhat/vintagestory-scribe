@@ -74,7 +74,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         background. On retest, focus/blur a row and confirm the text no longer jumps. (tasks.md 6.9.)
       - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "focus/blur a row and I can
         confirm the text no longer jumps." Borderless-input fix verified.
-- [ ] `8f37a2f3` **(6.5) Editor clips and scrolls; widths match.** In editor view, add enough
+- [x] `8f37a2f3` **(6.5) Editor clips and scrolls; widths match.** In editor view, add enough
       rows to overflow the box. Scroll: rows should slide continuously and clip cleanly at the
       top/bottom edge (not blink out / pop in fixed spots). Then switch between read and editor
       view and confirm the row list is the exact same width in both.
@@ -85,13 +85,16 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         bleed over the area above the list. Related bleed below the list in
         2026-07-21T14-12-21-general.png (a newly-added task's input drawn near screen bottom,
         outside the box). Retest after the clip-bleed fix (tracked as a follow-up, see 6.10/6.11).
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T21-37-15): "Scroll is clean and widths
+        are same." After the 6.10 clip fixes, both halves now pass — continuous clean scroll and
+        matching read/editor widths.
 - [x] `9a2eddd4` **(6.6) Read view still fine.** After all the shared-width and scroll changes,
       go back to the plain read view and confirm nothing regressed: clicking a task's checkbox
       toggles it done, the lined-paper ruling draws correctly, and a long list clips/scrolls
       properly.
       - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "All good." Read-view
         checkbox toggle, ruling, and scroll all still work after the shared-width/scroll changes.
-- [ ] `3ed89b7c` **(6.8) Re-click keeps focus + places caret.** Click into an editor row (caret
+- [x] `3ed89b7c` **(6.8) Re-click keeps focus + places caret.** Click into an editor row (caret
       appears), then click that SAME row again: the caret should stay, you can keep typing, and
       the caret should jump to where you clicked. Then click a DIFFERENT row and confirm focus
       moves there and the prior row's edit committed.
@@ -102,7 +105,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         focused row yield its text-column mouse-down to the input. This retest confirms the fix.
       - **Confirmed 2026-07-21** (playtest report 2026-07-21T14-19-12): "Confirm the caret moves
         appropriately on re-click in input." Re-click keeps focus and places the caret; fix holds.
-- [ ] `21041e34` **(6.10) Content bleeds past the clip boundary.** With a list long enough to
+- [x] `21041e34` **(6.10) Content bleeds past the clip boundary.** With a list long enough to
       overflow, scroll and add tasks; confirm NO row ruling, chrome, or text-input renders outside
       the dialog box — not above the title, not below the box over the buttons, not down the screen.
       - **Still broken 2026-07-21** (playtest report 2026-07-21T14-19-12, screenshots): a
@@ -141,6 +144,9 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         dialog window, so a focused input on an off-screen row painted unclipped below the box. Skip
         is focus-safe (reads live `renderY`, so it also covers the scroll-out-while-focused case, not
         just first-compose). Retest via 6.13.
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T21-37-15): "No row ruling, chrome or
+        input renders outside the dialog box." Both fixes hold — dividers gone, off-screen input
+        no longer bleeds.
 - [x] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
       long enough to overflow the box, click Add Task; confirm the new (focused, empty) task is
       scrolled into the visible area rather than appearing below the box / off-screen.
@@ -154,7 +160,7 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         scroll on an unrelated recompose. Retest via 6.13 (this item = 6.11).
       - **Confirmed 2026-07-21** (playtest report 2026-07-21T20-58-36): "the new empty task scrolls
         into view inside the box." Scroll-into-view works.
-- [ ] `aa8573bd` **(6.13) Clip + scroll-into-view retest.** With a list long enough to overflow:
+- [x] `aa8573bd` **(6.13) Clip + scroll-into-view retest.** With a list long enough to overflow:
       scroll around and confirm NOTHING renders outside the box — no ruling/chrome/text-input above
       the title, below over the buttons, or down the screen. Then click Add Task while
       scrolled/overflowing and confirm the new empty task scrolls into view inside the box. Also
@@ -172,6 +178,19 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         "nothing outside the box" claim plus the scroll-into-view (6.11) that already passed. On
         retest, specifically confirm the divider lines are GONE (not just clipped) and Add Task on a
         full list shows no stray input below "Done Editing".
+      - **Confirmed 2026-07-21** (playtest report 2026-07-21T21-37-15): all three sub-checks pass —
+        nothing renders outside the box, Add Task scrolls the new empty task into view, and
+        Enter/Shift+Tab to an edge row scrolls it into view. The 6.10/6.11 fixes and the 6.5 clip
+        half are all now confirmed.
+- [ ] `cd69a96f` **(6.14) Checkbox-to-text margin.** In the editor, focus a task row and confirm
+      there's a small, comfortable gap between the checkbox and where the text/input starts (not
+      flush against the box). Check it holds for both the static label and the focused input, and
+      at a couple of text sizes.
+      - **Still broken 2026-07-21** (playtest report 2026-07-21T21-37-15 + screenshot
+        2026-07-21T21-37-08-general.png): "functionally no distance between the checkbox and the
+        text input — we need a little bit of margin." Confirmed in the screenshot (text flush to the
+        checkbox on the focused row). Fix in the shared `RowTextLayout.TextX` so label + input move
+        together. Purely cosmetic; not a regression from the clip fixes.
 
 ## skeuomorphic-lectern-gui
 

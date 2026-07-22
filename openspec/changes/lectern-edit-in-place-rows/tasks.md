@@ -119,11 +119,20 @@
       `OnClickAddTask` and `MoveEditFocusTo` and consumed in `ComposeEditorView`, scrolls the
       focused row fully into view before clamping. One-shot so an ordinary click-to-focus or a live
       resync never overrides the user's own scroll. **Retest via 6.13.**
-- [ ] 6.13 Manually test in-game (retest of 6.5's clip half + 6.10/6.11): with a list long enough
+- [x] 6.13 Manually test in-game (retest of 6.5's clip half + 6.10/6.11): with a list long enough
       to overflow, scroll around and confirm NO ruling/chrome/text-input renders outside the box
       (not above the title, not below over the buttons, not down the screen). Then click Add Task
       with the list scrolled/overflowing and confirm the new empty task scrolls into view inside the
       box. Also Enter/Shift+Tab to a row near the top/bottom edge and confirm it scrolls into view.
+      *(Confirmed 2026-07-21T21-37-15 — all three sub-checks pass; 6.5 clip half + 6.10 + 6.11 all
+      now confirmed.)*
+- [ ] 6.14 **POLISH — add margin between the checkbox and the text.** Playtest 2026-07-21T21-37-15
+      (+ screenshot 2026-07-21T21-37-08-general.png): the row text/input sits flush against the
+      checkbox with no gap, which reads cramped. Add a small horizontal gap between the checkbox
+      column and the text column. This lives in the SHARED `RowTextLayout` (the single source of the
+      text-column X-offset), so fixing it there fixes BOTH the static label (`ScribeRowElement`) and
+      the floating input alignment in one place — they must stay in lockstep (design.md Decision 5).
+      Likely a small config knob (e.g. a checkbox-to-text gap) folded into `RowTextLayout.TextX`.
 - [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
       2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
       across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is
