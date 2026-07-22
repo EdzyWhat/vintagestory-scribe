@@ -93,22 +93,28 @@
 
 ### Playtest follow-up fixes (from report 2026-07-21T14-19-12)
 
-- [ ] 6.10 **BUG — content bleeds past the clip boundary.** Screenshots show (a) a newly-added
-      task's floating input rendered near the bottom of the screen, well below the dialog box
-      (2026-07-21T14-12-21-general.png), and (b) row rulings/chrome drawn *above* the top clip
-      boundary, overlapping the title area, while scrolled (2026-07-21T14-17-01-general.png).
-      Something in the editor row/input path is escaping the `BeginClip` scissor. Investigate:
-      the floating `ScribeRowTextInput` is a `GuiElementTextInput` whose `RenderInteractiveElements`
-      calls `GlScissor`/`GlScissorFlag(true)` then `GlScissorFlag(false)` — VSAPI-NOTES already
-      flags that this flag clobber defeats the dialog's clip for a mixed list. That is the prime
-      suspect for the input rendering unclipped below the box; confirm and fix (e.g. the input must
-      not render when its row is outside the visible range, or the scissor must be restored).
-- [ ] 6.11 **BUG — adding a task while scrolled/overflowing puts the new row off-screen.** With
-      enough rows to overflow, Add Task appends at the bottom (out of the visible area) and the
-      view does not scroll to it, so the new task (and its focused input) appears out of bounds
-      rather than being scrolled into view. Fix: after Add Task, scroll the list so the newly
-      focused row is visible (and within the clip region). Ties into 6.10 (the out-of-bounds input
-      is only visible at all because of the clip bleed).
+- [x] 6.10 **BUG — content bleeds past the clip boundary (fixed).** Screenshots showed a
+      newly-added task's floating input rendered near the bottom of the screen, well below the box,
+      and row rulings/chrome drawn above the top clip boundary while scrolled. **Root cause
+      (decompile-confirmed via `VintagestoryLib.dll`):** `GuiElementTextInput.RenderInteractiveElements`
+      ends with `GlScissorFlag(false)`, which is a GLOBAL `GL.Disable(GL_SCISSOR_TEST)` in
+      `ClientPlatformWindows` — it does NOT restore the enclosing `BeginClip` scissor on the render
+      API's `ScissorStack`, so everything drawn after the input renders unclipped. **Fix:**
+      `ScribeRowTextInput.RenderInteractiveElements` now calls `base` then
+      `PushScissor(InsideClipBounds)`/`PopScissor()` to re-assert the dialog's clip for later
+      elements. Recorded in VSAPI-NOTES.md ("text input ... bleeds out unclipped"). **Retest via
+      6.13.**
+- [x] 6.11 **BUG — adding a task while scrolled/overflowing puts the new row off-screen (fixed).**
+      Add Task (and Enter/Shift+Tab navigation) could move focus to a row outside the visible
+      window with no scroll-to. **Fix:** a one-shot `scrollFocusedRowIntoView` flag, set by
+      `OnClickAddTask` and `MoveEditFocusTo` and consumed in `ComposeEditorView`, scrolls the
+      focused row fully into view before clamping. One-shot so an ordinary click-to-focus or a live
+      resync never overrides the user's own scroll. **Retest via 6.13.**
+- [ ] 6.13 Manually test in-game (retest of 6.5's clip half + 6.10/6.11): with a list long enough
+      to overflow, scroll around and confirm NO ruling/chrome/text-input renders outside the box
+      (not above the title, not below over the buttons, not down the screen). Then click Add Task
+      with the list scrolled/overflowing and confirm the new empty task scrolls into view inside the
+      box. Also Enter/Shift+Tab to a row near the top/bottom edge and confirm it scrolls into view.
 - [ ] 6.12 **FEATURE — Ctrl+Enter commits and inserts a new task below the current row.** *(Decided
       2026-07-21.)* The tester asked for "add a task below the one I'm editing." The convention
       across task/PM tools (Todoist, Things, Apple Reminders, Notion, Workflowy, any outliner) is

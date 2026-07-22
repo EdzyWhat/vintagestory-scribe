@@ -111,6 +111,12 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         while scrolled (2026-07-21T14-17-01-general.png). Prime suspect: `GuiElementTextInput`'s
         `GlScissorFlag(false)` clobber defeating the dialog's `BeginClip` (already noted in
         VSAPI-NOTES for the mixed list). Needs investigation + fix.
+      - **Fix staged (awaiting retest) 2026-07-21:** root cause confirmed by decompiling
+        `VintagestoryLib.dll` — the base input's `GlScissorFlag(false)` is a global
+        `GL.Disable(GL_SCISSOR_TEST)` that doesn't restore the `BeginClip` scissor stack.
+        `ScribeRowTextInput.RenderInteractiveElements` now re-asserts the clip
+        (`PushScissor(InsideClipBounds)`/`PopScissor()`) after the base renders. Recorded in
+        VSAPI-NOTES.md. Retest via 6.13 (this item = 6.10).
 - [ ] `d9602714` **(6.11) Add-task while overflowing scrolls the new row into view.** With a list
       long enough to overflow the box, click Add Task; confirm the new (focused, empty) task is
       scrolled into the visible area rather than appearing below the box / off-screen.
@@ -118,6 +124,17 @@ set stay applied while it's collapsed — you only need it expanded to *move* a 
         the new task is appended at the bottom out of view and the list doesn't scroll to it, so
         it appears out of bounds. Fix: scroll to the newly focused row after Add Task. (Related to
         6.10 — the out-of-bounds row is only visible because of the clip bleed.)
+      - **Fix staged (awaiting retest) 2026-07-21:** a one-shot `scrollFocusedRowIntoView` flag
+        (set by Add Task + Enter/Shift+Tab navigation, consumed in `ComposeEditorView`) scrolls the
+        focused row fully into view before clamping; one-shot so it never overrides the user's own
+        scroll on an unrelated recompose. Retest via 6.13 (this item = 6.11).
+- [ ] `aa8573bd` **(6.13) Clip + scroll-into-view retest.** With a list long enough to overflow:
+      scroll around and confirm NOTHING renders outside the box — no ruling/chrome/text-input above
+      the title, below over the buttons, or down the screen. Then click Add Task while
+      scrolled/overflowing and confirm the new empty task scrolls into view inside the box. Also
+      Enter/Shift+Tab to a row near the top or bottom edge and confirm it scrolls into view.
+      - Covers the staged fixes for 6.10 (clip re-assert) and 6.11 (scroll-into-view), and the clip
+        half of 6.5 that was still failing.
 
 ## skeuomorphic-lectern-gui
 

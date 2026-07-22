@@ -105,6 +105,29 @@ public sealed class ScribeRowTextInput : GuiElementTextInput
         // to trigger it (see summary). If that call is ever removed, the input would render blank.
     }
 
+    /// <summary>
+    /// Re-asserts the dialog's clip after the base input renders. The base
+    /// <see cref="GuiElementTextInput.RenderInteractiveElements"/> ends with
+    /// <c>GlScissorFlag(false)</c>, which is a GLOBAL <c>GL.Disable(GL_SCISSOR_TEST)</c> in
+    /// <c>ClientPlatformWindows</c> -- it does NOT restore the enclosing <c>BeginClip</c> scissor
+    /// on the render API's <c>ScissorStack</c>. So without this, everything drawn after this input
+    /// in the frame (sibling rows, rulings, controls below) renders UNCLIPPED and bleeds past the
+    /// dialog frame (VSAPI-NOTES.md "text input ... bleeds out unclipped"). Push-then-pop the clip
+    /// bounds still on the stack top: <c>PopScissor</c> re-issues that scissor + re-enables the
+    /// flag, restoring the dialog's clip for later elements. No-op when this input isn't inside a
+    /// clip region (<c>InsideClipBounds</c> null).
+    /// </summary>
+    public override void RenderInteractiveElements(float deltaTime)
+    {
+        base.RenderInteractiveElements(deltaTime);
+
+        if (InsideClipBounds != null)
+        {
+            api.Render.PushScissor(InsideClipBounds);
+            api.Render.PopScissor();
+        }
+    }
+
     public override void OnFocusLost()
     {
         base.OnFocusLost();

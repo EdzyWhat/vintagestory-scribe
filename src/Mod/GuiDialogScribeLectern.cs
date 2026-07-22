@@ -185,6 +185,14 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     /// since opening a dialog or switching view mode should start scrolled to the top.</summary>
     private double rowListScrollValue;
 
+    /// <summary>One-shot request to scroll the currently focused editor row fully into view on the
+    /// next editor compose. Set by the focus-moving actions (Add Task, Enter/Shift+Tab navigation)
+    /// so a row that lands outside the visible window -- e.g. a task appended to the bottom of an
+    /// overflowing list -- is scrolled to rather than left off-screen (task 6.11). Consumed (and
+    /// cleared) in <see cref="ComposeEditorView"/>. NOT set on an ordinary click-to-focus (the
+    /// clicked row is already visible) or a live resync, so it never fights the user's own scroll.</summary>
+    private bool scrollFocusedRowIntoView;
+
     /// <summary>Suppresses <see cref="OnRowListScroll"/>'s recompose-triggering logic while a
     /// ComposeXxxView call is already in progress. <c>AddVerticalScrollbar(...).SetHeights(...)</c>
     /// always fires this callback synchronously with a freshly-constructed scrollbar's value (0),
@@ -588,7 +596,28 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
             contentY += rowHeights[i] + rowSpacing;
         }
 
-        // Clamp the restored scroll position against the real content height (same as ComposeReadView).
+        // A focus-moving action (Add Task, Enter/Shift+Tab) may have put the focused row outside the
+        // visible window -- scroll so it's fully in view before clamping (task 6.11). One-shot: an
+        // ordinary click-to-focus or a live resync leaves the flag unset, so the user's own scroll
+        // is never overridden.
+        if (scrollFocusedRowIntoView && focusedEditIndex is { } focusIdx && focusIdx < blocks.Count)
+        {
+            double rowTop = rowYs[focusIdx];
+            double rowBottom = rowTop + rowHeights[focusIdx];
+            if (rowTop < rowListScrollValue)
+            {
+                rowListScrollValue = rowTop; // row above the window: scroll up to its top
+            }
+            else if (rowBottom > rowListScrollValue + clientConfig.VisibleListHeight)
+            {
+                // row below the window: scroll down so its bottom sits at the window bottom
+                rowListScrollValue = rowBottom - clientConfig.VisibleListHeight;
+            }
+        }
+        scrollFocusedRowIntoView = false;
+
+        // Clamp the (possibly adjusted) scroll position against the real content height (same as
+        // ComposeReadView).
         rowListScrollValue = System.Math.Clamp(rowListScrollValue, 0, System.Math.Max(0, contentY - clientConfig.VisibleListHeight));
 
         var clipBounds = ElementBounds.Fixed(0, y, listWidth, clientConfig.VisibleListHeight);
@@ -803,10 +832,12 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
     }
 
     /// <summary>Moves the in-place edit focus to <paramref name="index"/> and recomposes so the
-    /// single input repositions onto that row.</summary>
+    /// single input repositions onto that row. Requests a scroll-into-view since keyboard navigation
+    /// (Enter/Shift+Tab) can move focus to a row outside the visible window (task 6.11).</summary>
     private void MoveEditFocusTo(int index)
     {
         focusedEditIndex = index;
+        scrollFocusedRowIntoView = true;
         RequestRecompose();
     }
 
@@ -848,8 +879,11 @@ public sealed class GuiDialogScribeLectern : GuiDialogBlockEntity
         if (scratchDocument is null) return true;
         scratchDocument.AddTask(Lang.Get("scribe:scribe-gui-newtask-placeholder"));
         isDirty = true;
-        // Focus the newly added row so the player can immediately type over the placeholder.
+        // Focus the newly added row so the player can immediately type over the placeholder, and
+        // scroll it into view -- appending to an overflowing list puts the new row below the visible
+        // window otherwise (task 6.11).
         focusedEditIndex = scratchDocument.Blocks.Count - 1;
+        scrollFocusedRowIntoView = true;
         RequestRecompose();
         return true;
     }

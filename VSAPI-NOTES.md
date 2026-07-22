@@ -259,6 +259,47 @@ entries above require. See `GuiDialogScribeLectern.ComposeReadView`/`ComposeEdit
 
 ---
 
+**Symptom: a `GuiElementTextInput` (or `TextArea`) composed inside a `BeginClip` region
+renders its own text fine, but everything drawn AFTER it that frame — sibling rows,
+rulings, elements below the clip — bleeds out unclipped, past the dialog frame and over
+controls outside the box.**
+
+The engine's clip stack and the text input's own clipping use two DIFFERENT, non-composing
+mechanisms, confirmed by decompiling `VintagestoryLib.dll` (`RenderAPIGame.PushScissor`/
+`PopScissor`) and `ClientPlatformWindows`:
+- **The clip STACK (correct, what `BeginClip` uses).** `IRenderAPI.PushScissor(ElementBounds,
+  stacking=false)` computes the GL scissor rect from the bounds and pushes onto
+  `ScissorStack`; `PopScissor()` pops and **restores the previous stack entry's scissor**
+  (re-issuing `GlScissor` + `GlScissorFlag(true)` for whatever is now on top, or disabling if
+  the stack is empty). `GuiElementClip` (from `BeginClip`/`EndClip`) drives this. The
+  `IRenderAPI` doc comment says exactly this: *"Any previously applied scissor will be restored
+  after calling PopScissor()."*
+- **The raw flags (what `GuiElementTextInput` uses).** Its `RenderInteractiveElements` calls
+  `api.Render.GlScissor(...)` (its own tight text rect) → `GlScissorFlag(true)` → draw text →
+  **`GlScissorFlag(false)`**. In `ClientPlatformWindows`, `GlScissorFlag(false)` is a *global*
+  `GL.Disable(GL_SCISSOR_TEST)` — it does NOT consult or restore `ScissorStack`. So the instant
+  the input finishes, scissor testing is OFF for the rest of the frame, and the outer
+  `BeginClip` scissor is silently defeated for every element rendered afterward.
+
+This is why floating a real `GuiElementTextInput` into a natively-clipped row list (the S2
+edit-in-place editor) reintroduced overflow bleed even though the clip itself works: the input's
+`GlScissorFlag(false)` clobbers the dialog's clip. (Vanilla dodges this because its clipped
+inputs are the last/only interactive element in the region, so nothing renders after the
+clobber.)
+
+**Fix pattern:** after the base input renders (which leaves scissor disabled), re-assert the
+enclosing clip. Override the input's `RenderInteractiveElements` to call `base(...)` then
+`api.Render.PushScissor(InsideClipBounds); api.Render.PopScissor();` — the `PopScissor`
+immediately restores the clip that was on the stack top before the input ran, re-enabling
+`GL_SCISSOR_TEST` with the dialog's clip rect so later elements clip again. (Push-then-pop
+because the stack still holds the `BeginClip` entry; pop re-issues it.) `InsideClipBounds` is
+set on every element added inside `BeginClip`. Belt-and-suspenders: also skip composing the
+input entirely when its row is outside the visible window (an off-screen focused input would
+otherwise draw unclipped down the screen). See `ScribeRowTextInput.RenderInteractiveElements`
+and `GuiDialogScribeLectern`'s editor compose.
+
+---
+
 **Symptom: dragging a `GuiElementScrollbar` (or `AddSlider`) thumb moves it one step/pixel
 then the drag dies; mouse-wheel and track-clicks work fine.**
 
